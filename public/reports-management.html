@@ -404,20 +404,32 @@
         </div>
     </div>
 
+    <script src="js/reports-api.js"></script>
     <script>
         // Global variables
+        let api = new ReportsAPI();
         let authToken = localStorage.getItem('authToken');
         let currentEditingId = null;
         let selectedFile = null;
 
+        // Handle token expiration
+        api.onTokenExpired = () => {
+            showAuthMessage('Session expired. Please login again.', 'error');
+            logout();
+        };
+
         // API Configuration
-        const API_BASE = 'http://localhost:8000/api';
+        const API_BASE = api.baseUrl;
 
         // Initialize the application
         window.onload = function() {
-            if (authToken) {
+            if (api.token) {
+                hideAuthSection();
                 showReportsSection();
                 loadReports();
+            } else {
+                showAuthSection();
+                hideReportsSection();
             }
         };
 
@@ -425,59 +437,238 @@
         async function login() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-            
             if (!email || !password) {
                 showAuthMessage('Please enter both email and password', 'error');
                 return;
             }
-
             try {
                 showAuthMessage('Logging in...', 'loading');
-                const response = await fetch(`${API_BASE}/login`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: JSON.stringify({ email, password })
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
-                    authToken = data.token;
-                    localStorage.setItem('authToken', authToken);
+                const data = await api.login(email, password);
+                console.log("Login response:", data);
+                if (data.success) {
                     showAuthMessage('Login successful!', 'success');
-                    hideAuthSection();
-                    showReportsSection();
-                    loadReports();
+                    setTimeout(() => {
+                        hideAuthSection();
+                        showReportsSection();
+                        loadReports();
+                    }, 200); // Ensure DOM update before showing reports
                 } else {
                     showAuthMessage(data.message || 'Login failed', 'error');
                 }
             } catch (error) {
-                showAuthMessage('Network error: ' + error.message, 'error');
+                showAuthMessage(error.message, 'error');
             }
         }
 
         async function logout() {
-            if (authToken) {
-                try {
-                    await fetch(`${API_BASE}/logout`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`,
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-                } catch (error) {
-                    console.error('Logout error:', error);
-                }
-            }
-            authToken = null;
-            localStorage.removeItem('authToken');
+            await api.logout();
             showAuthMessage('Logged out successfully', 'success');
             hideReportsSection();
             showAuthSection();
+        }
+
+        // Reports Management Functions
+        async function loadReports() {
+            if (!api.token) {
+                showReportsMessage('Please login first', 'error');
+                return;
+            }
+            try {
+                showReportsMessage('Loading reports...', 'loading');
+                const data = await api.getReports(true);
+                displayReports(data.data || []);
+                showReportsMessage('Reports loaded successfully', 'success');
+            } catch (error) {
+                showReportsMessage(error.message, 'error');
+            }
+        }
+
+        function displayReports(reports) {
+            const reportsList = document.getElementById('reportsList');
+            if (!Array.isArray(reports) || reports.length === 0) {
+                reportsList.innerHTML = '<div class="loading">No reports found</div>';
+                return;
+            }
+            reportsList.innerHTML = reports.map(report => `
+                <div class="report-item">
+                    <h4>${report.title}</h4>
+                    <p><strong>Description:</strong> ${report.description || 'No description'}</p>
+                    <p><strong>Year:</strong> ${report.year?.name || 'N/A'} | <strong>Month:</strong> ${report.month?.name || 'N/A'}</p>
+                    <p><strong>Status:</strong> <span class="status-badge status-${report.status}">${report.status}</span></p>
+                    <p><strong>Created by:</strong> ${report.created_by || 'N/A'}</p>
+                    ${report.file_url ? `<p><strong>File:</strong> <a href="${report.file_url}" target="_blank">${report.file_name}</a> (${report.formatted_file_size})</p>` : ''}
+                    <p><strong>Created:</strong> ${new Date(report.created_at).toLocaleDateString()}</p>
+                    <div class="report-actions">
+                        <button class="btn" onclick="editReport(${report.id})">✏️ Edit</button>
+                        <button class="btn btn-danger" onclick="deleteReport(${report.id})">🗑️ Delete</button>
+                        ${report.status === 'draft' ? 
+                            `<button class="btn btn-success" onclick="publishReport(${report.id})">📤 Publish</button>` : 
+                            `<button class="btn btn-secondary" onclick="unpublishReport(${report.id})">📥 Unpublish</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Modal Functions
+        function showCreateModal() {
+            currentEditingId = null;
+            document.getElementById('modalTitle').textContent = 'Create New Report';
+            document.getElementById('reportForm').reset();
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('uploadProgress').style.display = 'none';
+            selectedFile = null;
+            populateYearMonthDropdowns();
+            document.getElementById('reportModal').style.display = 'block';
+        }
+
+        async function editReport(id) {
+            currentEditingId = id;
+            document.getElementById('modalTitle').textContent = 'Edit Report';
+            await populateYearMonthDropdowns();
+            try {
+                const data = await api.getReport(id);
+                const report = data.data;
+                document.getElementById('yearId').value = report.year_id || '';
+                document.getElementById('monthId').value = report.month_id || '';
+                document.getElementById('title').value = report.title || '';
+                document.getElementById('description').value = report.description || '';
+                document.getElementById('status').value = report.status || 'draft';
+                document.getElementById('createdBy').value = report.created_by || '';
+                if (report.file_url) {
+                    document.getElementById('fileInfo').innerHTML = `
+                        <strong>Current file:</strong> ${report.file_name} (${report.formatted_file_size})<br>
+                        <a href="${report.file_url}" target="_blank">View current file</a>
+                    `;
+                    document.getElementById('fileInfo').style.display = 'block';
+                }
+                document.getElementById('reportModal').style.display = 'block';
+            } catch (error) {
+                showReportsMessage(error.message, 'error');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('reportModal').style.display = 'none';
+            document.getElementById('modalMessage').innerHTML = '';
+            selectedFile = null;
+        }
+
+        // Populate year and month dropdowns dynamically
+        async function populateYearMonthDropdowns() {
+            const yearSelect = document.getElementById('yearId');
+            const monthSelect = document.getElementById('monthId');
+            yearSelect.innerHTML = '<option value="">Select Year</option>';
+            monthSelect.innerHTML = '<option value="">Select Month</option>';
+            try {
+                const [years, months] = await Promise.all([
+                    api.getYears(),
+                    api.getMonths()
+                ]);
+                (years.data || []).forEach(y => {
+                    yearSelect.innerHTML += `<option value="${y.id}">${y.name}</option>`;
+                });
+                (months.data || []).forEach(m => {
+                    monthSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+                });
+            } catch (e) {
+                // fallback or show error
+            }
+        }
+
+        // File handling
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (file) {
+                selectedFile = file;
+                try {
+                    api.validateFile(file);
+                } catch (err) {
+                    showModalMessage(err.message, 'error');
+                    input.value = '';
+                    selectedFile = null;
+                    return;
+                }
+                document.getElementById('fileInfo').innerHTML = `
+                    <strong>Selected file:</strong> ${file.name}<br>
+                    <strong>Size:</strong> ${api.formatFileSize(file.size)}<br>
+                    <strong>Type:</strong> ${file.type}
+                `;
+                document.getElementById('fileInfo').style.display = 'block';
+            }
+        }
+
+        // Form submission
+        document.getElementById('reportForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (!api.token) {
+                showModalMessage('Please login first', 'error');
+                return;
+            }
+            const reportData = {
+                year_id: document.getElementById('yearId').value,
+                month_id: document.getElementById('monthId').value,
+                title: document.getElementById('title').value,
+                description: document.getElementById('description').value,
+                status: document.getElementById('status').value,
+                created_by: document.getElementById('createdBy').value
+            };
+            try {
+                showModalMessage('Saving report...', 'loading');
+                let data;
+                if (currentEditingId) {
+                    data = await api.updateReport(currentEditingId, reportData, selectedFile);
+                } else {
+                    data = await api.createReport(reportData, selectedFile);
+                }
+                if (data.success) {
+                    showModalMessage('Report saved successfully!', 'success');
+                    setTimeout(() => {
+                        closeModal();
+                        loadReports();
+                    }, 1500);
+                } else {
+                    showModalMessage(data.message || 'Failed to save report', 'error');
+                }
+            } catch (error) {
+                showModalMessage(error.message, 'error');
+            }
+        });
+
+        // Delete report
+        async function deleteReport(id) {
+            if (!confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
+                return;
+            }
+            try {
+                showReportsMessage('Deleting report...', 'loading');
+                await api.deleteReport(id);
+                showReportsMessage('Report deleted successfully', 'success');
+                loadReports();
+            } catch (error) {
+                showReportsMessage(error.message, 'error');
+            }
+        }
+
+        // Publish/Unpublish functions
+        async function publishReport(id) {
+            try {
+                await api.publishReport(id);
+                showReportsMessage('Report published successfully', 'success');
+                loadReports();
+            } catch (error) {
+                showReportsMessage(error.message, 'error');
+            }
+        }
+
+        async function unpublishReport(id) {
+            try {
+                await api.unpublishReport(id);
+                showReportsMessage('Report unpublished successfully', 'success');
+                loadReports();
+            } catch (error) {
+                showReportsMessage(error.message, 'error');
+            }
         }
 
         // UI Helper Functions
@@ -519,312 +710,6 @@
 
         function showAuthSection() {
             document.getElementById('authSection').style.display = 'block';
-        }
-
-        // Reports Management Functions
-        async function loadReports() {
-            if (!authToken) {
-                showReportsMessage('Please login first', 'error');
-                return;
-            }
-
-            try {
-                showReportsMessage('Loading reports...', 'loading');
-                
-                const response = await fetch(`${API_BASE}/reports/staff/monthly/all`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    displayReports(data.data || []);
-                    showReportsMessage('Reports loaded successfully', 'success');
-                } else {
-                    showReportsMessage('Failed to load reports', 'error');
-                }
-            } catch (error) {
-                showReportsMessage('Network error: ' + error.message, 'error');
-            }
-        }
-
-        function displayReports(reports) {
-            const reportsList = document.getElementById('reportsList');
-            
-            if (reports.length === 0) {
-                reportsList.innerHTML = '<div class="loading">No reports found</div>';
-                return;
-            }
-
-            reportsList.innerHTML = reports.map(report => `
-                <div class="report-item">
-                    <h4>${report.title}</h4>
-                    <p><strong>Description:</strong> ${report.description || 'No description'}</p>
-                    <p><strong>Year:</strong> ${report.year?.name || 'N/A'} | <strong>Month:</strong> ${report.month?.name || 'N/A'}</p>
-                    <p><strong>Status:</strong> <span class="status-badge status-${report.status}">${report.status}</span></p>
-                    <p><strong>Created by:</strong> ${report.created_by || 'N/A'}</p>
-                    ${report.file_url ? `<p><strong>File:</strong> <a href="${report.file_url}" target="_blank">${report.file_name}</a> (${report.formatted_file_size})</p>` : ''}
-                    <p><strong>Created:</strong> ${new Date(report.created_at).toLocaleDateString()}</p>
-                    
-                    <div class="report-actions">
-                        <button class="btn" onclick="editReport(${report.id})">✏️ Edit</button>
-                        <button class="btn btn-danger" onclick="deleteReport(${report.id})">🗑️ Delete</button>
-                        ${report.status === 'draft' ? 
-                            `<button class="btn btn-success" onclick="publishReport(${report.id})">📤 Publish</button>` : 
-                            `<button class="btn btn-secondary" onclick="unpublishReport(${report.id})">📥 Unpublish</button>`
-                        }
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Modal Functions
-        function showCreateModal() {
-            currentEditingId = null;
-            document.getElementById('modalTitle').textContent = 'Create New Report';
-            document.getElementById('reportForm').reset();
-            document.getElementById('fileInfo').style.display = 'none';
-            document.getElementById('uploadProgress').style.display = 'none';
-            selectedFile = null;
-            populateYearMonthDropdowns();
-            document.getElementById('reportModal').style.display = 'block';
-        }
-
-        async function editReport(id) {
-            currentEditingId = id;
-            document.getElementById('modalTitle').textContent = 'Edit Report';
-            await populateYearMonthDropdowns();
-            try {
-                const response = await fetch(`${API_BASE}/reports/monthly/${id}`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    const report = data.data;
-                    document.getElementById('yearId').value = report.year_id || '';
-                    document.getElementById('monthId').value = report.month_id || '';
-                    document.getElementById('title').value = report.title || '';
-                    document.getElementById('description').value = report.description || '';
-                    document.getElementById('status').value = report.status || 'draft';
-                    document.getElementById('createdBy').value = report.created_by || '';
-                    if (report.file_url) {
-                        document.getElementById('fileInfo').innerHTML = `
-                            <strong>Current file:</strong> ${report.file_name} (${report.formatted_file_size})<br>
-                            <a href="${report.file_url}" target="_blank">View current file</a>
-                        `;
-                        document.getElementById('fileInfo').style.display = 'block';
-                    }
-                    document.getElementById('reportModal').style.display = 'block';
-                } else {
-                    showReportsMessage('Failed to load report details', 'error');
-                }
-            } catch (error) {
-                showReportsMessage('Network error: ' + error.message, 'error');
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('reportModal').style.display = 'none';
-            document.getElementById('modalMessage').innerHTML = '';
-            selectedFile = null;
-        }
-
-        // Populate year and month dropdowns dynamically
-        async function populateYearMonthDropdowns() {
-            const yearSelect = document.getElementById('yearId');
-            const monthSelect = document.getElementById('monthId');
-            yearSelect.innerHTML = '<option value="">Select Year</option>';
-            monthSelect.innerHTML = '<option value="">Select Month</option>';
-            try {
-                const [yearsRes, monthsRes] = await Promise.all([
-                    fetch(`${API_BASE}/years`, { headers: { 'Authorization': `Bearer ${authToken}` } }),
-                    fetch(`${API_BASE}/months`, { headers: { 'Authorization': `Bearer ${authToken}` } })
-                ]);
-                if (yearsRes.ok) {
-                    const years = (await yearsRes.json()).data || [];
-                    years.forEach(y => {
-                        yearSelect.innerHTML += `<option value="${y.id}">${y.name}</option>`;
-                    });
-                }
-                if (monthsRes.ok) {
-                    const months = (await monthsRes.json()).data || [];
-                    months.forEach(m => {
-                        monthSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
-                    });
-                }
-            } catch (e) {
-                // fallback or show error
-            }
-        }
-
-        // File handling
-        function handleFileSelect(input) {
-            const file = input.files[0];
-            if (file) {
-                selectedFile = file;
-                
-                // Validate file type
-                const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
-                if (!allowedTypes.includes(file.type)) {
-                    showModalMessage('Invalid file type. Please select a PDF, DOC, DOCX, or TXT file.', 'error');
-                    input.value = '';
-                    selectedFile = null;
-                    return;
-                }
-                
-                // Validate file size (10MB)
-                if (file.size > 10 * 1024 * 1024) {
-                    showModalMessage('File too large. Maximum size is 10MB.', 'error');
-                    input.value = '';
-                    selectedFile = null;
-                    return;
-                }
-                
-                document.getElementById('fileInfo').innerHTML = `
-                    <strong>Selected file:</strong> ${file.name}<br>
-                    <strong>Size:</strong> ${(file.size / 1024 / 1024).toFixed(2)} MB<br>
-                    <strong>Type:</strong> ${file.type}
-                `;
-                document.getElementById('fileInfo').style.display = 'block';
-            }
-        }
-
-        // Form submission
-        document.getElementById('reportForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            if (!authToken) {
-                showModalMessage('Please login first', 'error');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('year_id', document.getElementById('yearId').value);
-            formData.append('month_id', document.getElementById('monthId').value);
-            formData.append('title', document.getElementById('title').value);
-            formData.append('description', document.getElementById('description').value);
-            formData.append('status', document.getElementById('status').value);
-            formData.append('created_by', document.getElementById('createdBy').value);
-            
-            if (selectedFile) {
-                formData.append('file', selectedFile);
-            }
-
-            try {
-                showModalMessage('Saving report...', 'loading');
-                
-                const url = currentEditingId ? 
-                    `${API_BASE}/admin/reports/monthly/${currentEditingId}` : 
-                    `${API_BASE}/admin/reports/monthly`;
-                
-                const method = currentEditingId ? 'PUT' : 'POST';
-
-                const response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showModalMessage('Report saved successfully!', 'success');
-                    setTimeout(() => {
-                        closeModal();
-                        loadReports();
-                    }, 1500);
-                } else {
-                    showModalMessage(data.message || 'Failed to save report', 'error');
-                }
-            } catch (error) {
-                showModalMessage('Network error: ' + error.message, 'error');
-            }
-        });
-
-        // Delete report
-        async function deleteReport(id) {
-            if (!confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
-                return;
-            }
-
-            try {
-                showReportsMessage('Deleting report...', 'loading');
-                
-                const response = await fetch(`${API_BASE}/admin/reports/monthly/${id}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
-
-                if (response.ok) {
-                    showReportsMessage('Report deleted successfully', 'success');
-                    loadReports();
-                } else {
-                    showReportsMessage('Failed to delete report', 'error');
-                }
-            } catch (error) {
-                showReportsMessage('Network error: ' + error.message, 'error');
-            }
-        }
-
-        // Publish/Unpublish functions
-        async function publishReport(id) {
-            try {
-                const response = await fetch(`${API_BASE}/reports/staff/monthly/${id}/publish`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
-
-                if (response.ok) {
-                    showReportsMessage('Report published successfully', 'success');
-                    loadReports();
-                } else {
-                    showReportsMessage('Failed to publish report', 'error');
-                }
-            } catch (error) {
-                showReportsMessage('Network error: ' + error.message, 'error');
-            }
-        }
-
-        async function unpublishReport(id) {
-            try {
-                const response = await fetch(`${API_BASE}/reports/staff/monthly/${id}/unpublish`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
-
-                if (response.ok) {
-                    showReportsMessage('Report unpublished successfully', 'success');
-                    loadReports();
-                } else {
-                    showReportsMessage('Failed to unpublish report', 'error');
-                }
-            } catch (error) {
-                showReportsMessage('Network error: ' + error.message, 'error');
-            }
         }
 
         // Modal click outside to close

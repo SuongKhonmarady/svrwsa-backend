@@ -76,7 +76,9 @@ class YearlyReportController extends Controller
                   ->orderBy('years.year_value', 'desc')
                   ->select('yearly_reports.*');
             
-            $reports = $query->paginate($request->get('per_page', 15));
+            // $reports = $query->paginate($request->get('per_page', 15));
+            
+            $reports = $query->get();
             
             return response()->json([
                 'success' => true,

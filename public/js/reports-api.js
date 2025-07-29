@@ -51,7 +51,7 @@ class ReportsAPI {
         }
 
         const data = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(data.message || `HTTP error! status: ${response.status}`);
         }
@@ -68,8 +68,8 @@ class ReportsAPI {
         });
 
         const data = await this.handleResponse(response);
-        
-        if (data.success && data.token) {
+
+        if (data.token) {
             this.setToken(data.token);
         }
 
@@ -127,7 +127,7 @@ class ReportsAPI {
 
     async createReport(reportData, file = null) {
         const formData = new FormData();
-        
+
         // Add report data
         Object.keys(reportData).forEach(key => {
             if (reportData[key] !== null && reportData[key] !== undefined) {
@@ -151,7 +151,7 @@ class ReportsAPI {
 
     async updateReport(id, reportData, file = null) {
         const formData = new FormData();
-        
+
         // Add report data
         Object.keys(reportData).forEach(key => {
             if (reportData[key] !== null && reportData[key] !== undefined) {
@@ -272,11 +272,11 @@ class ReportsAPI {
 
     formatFileSize(bytes) {
         if (bytes === 0) return '0 Bytes';
-        
+
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        
+
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
@@ -302,7 +302,7 @@ class ReportsAPI {
     async uploadWithProgress(url, formData, onProgress) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            
+
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable && onProgress) {
                     const percentComplete = (e.loaded / e.total) * 100;
@@ -336,7 +336,7 @@ class ReportsAPI {
             xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
             xhr.setRequestHeader('Accept', 'application/json');
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            
+
             xhr.send(formData);
         });
     }
@@ -344,7 +344,7 @@ class ReportsAPI {
     // Batch operations
     async batchPublish(reportIds) {
         const results = [];
-        
+
         for (const id of reportIds) {
             try {
                 const result = await this.publishReport(id);
@@ -359,7 +359,7 @@ class ReportsAPI {
 
     async batchUnpublish(reportIds) {
         const results = [];
-        
+
         for (const id of reportIds) {
             try {
                 const result = await this.unpublishReport(id);
@@ -374,7 +374,7 @@ class ReportsAPI {
 
     async batchDelete(reportIds) {
         const results = [];
-        
+
         for (const id of reportIds) {
             try {
                 const result = await this.deleteReport(id);

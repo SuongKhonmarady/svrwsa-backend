@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use App\Http\Requests\MonthlyReportRequest;
 
 class MonthlyReportController extends Controller
 {
@@ -107,70 +108,43 @@ class MonthlyReportController extends Controller
     /**
      * Store a new monthly report
      */
-    public function store(Request $request): JsonResponse
+    public function store(MonthlyReportRequest $request): JsonResponse
     {
         try {
-            $validator = Validator::make($request->all(), [
-                'year_id' => 'required|exists:years,id',
-                'month_id' => 'required|exists:months,id',
-                'title' => 'nullable|string|max:255',
-                'description' => 'nullable|string',
-                'status' => 'in:draft,published',
-                'file' => 'nullable|file|mimes:pdf,doc,docx|max:10240', // 10MB max
-                'created_by' => 'required|string|max:100'
-            ]);
+            $data = $request->validated();
             
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
+            // Securely add user attribution from the authenticated user's session.
+            $data['created_by'] = auth()->user()->name;
             
-            // Check if report already exists for this year/month
-            $existingReport = MonthlyReport::where('year_id', $request->year_id)
-                ->where('month_id', $request->month_id)
-                ->first();
-                
-            if ($existingReport) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Monthly report already exists for this period'
-                ], 409);
-            }
-            
-            $data = $request->only(['year_id', 'month_id', 'title', 'description', 'status', 'created_by']);
-            $data['status'] = $data['status'] ?? 'draft';
-            
-            // Create the report first
             $report = MonthlyReport::create($data);
             
-            // Handle file upload to S3
             if ($request->hasFile('file')) {
-                $file = $request->file('file');
-                $uploaded = $report->uploadFileToS3($file);
-                
-                if (!$uploaded) {
-                    $report->delete(); // Clean up if file upload fails
+                if (!$report->uploadFileToS3($request->file('file'))) {
+                    // If upload fails, delete the created report to avoid orphaned records.
+                    $report->delete(); 
                     return response()->json([
-                        'success' => false,
-                        'message' => 'Failed to upload file to S3'
+                        'success' => false, 
+                        'error' => 'Failed to upload file. The report was not created.'
                     ], 500);
                 }
             }
             
             $report->load(['year', 'month']);
             
-            return response()->json([
-                'success' => true,
-                'data' => $report,
-                'message' => 'Monthly report created successfully'
-            ], 201);
-        } catch (\Exception $e) {
+            return response()->json(['success' => true, 'data' => $report, 'message' => 'Monthly report created successfully'], 201);
+        
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // This will be triggered by MonthlyReportRequest if validation fails.
             return response()->json([
                 'success' => false,
-                'message' => 'Error creating monthly report: ' . $e->getMessage()
+                'error' => 'Validation failed. Please check the form fields.',
+                'details' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error creating monthly report: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'error' => 'An unexpected error occurred while creating the report.'
             ], 500);
         }
     }
@@ -201,86 +175,54 @@ class MonthlyReportController extends Controller
     /**
      * Update a monthly report
      */
-    public function update(Request $request, $id): JsonResponse
+    public function update(MonthlyReportRequest $request, $id): JsonResponse
     {
         try {
             $report = MonthlyReport::findOrFail($id);
+            $data = $request->validated();
             
-            $validator = Validator::make($request->all(), [
-                'year_id' => 'sometimes|exists:years,id',
-                'month_id' => 'sometimes|exists:months,id',
-                'title' => 'sometimes|string|max:255',
-                'description' => 'sometimes|string',
-                'status' => 'sometimes|in:draft,published',
-                'file' => 'sometimes|file|mimes:pdf,doc,docx,txt|max:10240', // 10MB max
-                'created_by' => 'sometimes|string|max:100'
-            ]);
+            // Securely add who updated the report.
+            $data['updated_by'] = auth()->user()->name;
             
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-            
-            // Check if year/month combination is unique (if being updated)
-            if ($request->has('year_id') || $request->has('month_id')) {
-                $yearId = $request->get('year_id', $report->year_id);
-                $monthId = $request->get('month_id', $report->month_id);
-                
-                $existingReport = MonthlyReport::where('year_id', $yearId)
-                    ->where('month_id', $monthId)
-                    ->where('id', '!=', $id)
-                    ->first();
-                    
-                if ($existingReport) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Monthly report already exists for this period'
-                    ], 409);
-                }
-            }
-            
-            $data = $request->only(['year_id', 'month_id', 'title', 'description', 'status', 'created_by']);
-            
-            // Handle file upload
             if ($request->hasFile('file')) {
-                // Delete old file from S3 if exists
+                // Delete old file from S3 if it exists before uploading the new one.
                 if ($report->file_url) {
                     $report->deleteFileFromS3();
                 }
                 
-                $file = $request->file('file');
-                $uploaded = $report->uploadFileToS3($file);
-                
-                if (!$uploaded) {
+                if (!$report->uploadFileToS3($request->file('file'))) {
                     return response()->json([
-                        'success' => false,
-                        'message' => 'Failed to upload file to S3'
+                        'success' => false, 
+                        'error' => 'Failed to upload the new file.'
                     ], 500);
                 }
             }
             
-            // Set published_at if status changes to published
-            if ($request->status === 'published' && $report->status !== 'published') {
-                $data['published_at'] = now();
-            } elseif ($request->status === 'draft') {
-                $data['published_at'] = null;
+            // Handle the 'published_at' timestamp when status changes.
+            if ($request->filled('status')) {
+                if ($request->status === 'published' && $report->status !== 'published') {
+                    $data['published_at'] = now();
+                } elseif ($request->status === 'draft') {
+                    $data['published_at'] = null;
+                }
             }
             
             $report->update($data);
             $report->load(['year', 'month']);
             
-            return response()->json([
-                'success' => true,
-                'data' => $report,
-                'message' => 'Monthly report updated successfully'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
+            return response()->json(['success' => true, 'data' => $report, 'message' => 'Monthly report updated successfully']);
+        
+        } catch (\Illuminate\Validation\ValidationException $e) {
+             return response()->json([
                 'success' => false,
-                'message' => 'Error updating monthly report: ' . $e->getMessage()
+                'error' => 'Validation failed. Please check the form fields.',
+                'details' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error updating monthly report: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'error' => 'An unexpected error occurred while updating the report.'
             ], 500);
         }
     }
@@ -293,10 +235,8 @@ class MonthlyReportController extends Controller
         try {
             $report = MonthlyReport::findOrFail($id);
             
-            // Delete file if exists
             if ($report->file_url) {
-                $path = str_replace('/storage/', '', $report->file_url);
-                Storage::disk('public')->delete($path);
+                $report->deleteFileFromS3();
             }
             
             $report->delete();
@@ -308,7 +248,7 @@ class MonthlyReportController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error deleting monthly report: ' . $e->getMessage()
+                'error' => 'Error deleting monthly report: ' . $e->getMessage()
             ], 500);
         }
     }

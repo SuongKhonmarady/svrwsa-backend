@@ -11,11 +11,11 @@ use Illuminate\Support\Facades\Storage;
 $app = require_once 'bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
-echo "Testing PDF upload for November 2025 report...\n";
+echo "Testing PDF upload for November 2030 report...\n";
 
 try {
-    // Find November 2025 report
-    $year = Year::where('year_value', 2025)->first();
+    // Find November 2030 report
+    $year = Year::where('year_value', 2030)->first();
     $month = Month::where('month', 'November')->first();
     
     if ($year && $month) {
@@ -39,10 +39,10 @@ try {
                 echo "File URL: {$report->file_url}\n";
                 echo "File Name: {$report->file_name}\n";
                 echo "File Size: {$report->formatted_file_size}\n";
-                echo "S3 Path: monthly_reports/2025/november/{$fileName}\n";
+                echo "S3 Path: monthly_reports/2030/november/{$fileName}\n";
                 
                 // Verify file exists in S3
-                $s3Files = Storage::disk('s3')->files('monthly_reports/2025/november');
+                $s3Files = Storage::disk('s3')->files('monthly_reports/2030/november');
                 echo "\nFiles in S3 november folder:\n";
                 foreach ($s3Files as $file) {
                     echo "  - " . basename($file) . "\n";
@@ -64,10 +64,10 @@ try {
                 echo "❌ Failed to upload PDF to S3\n";
             }
         } else {
-            echo "❌ November 2025 report not found\n";
+            echo "❌ November 2030 report not found\n";
         }
     } else {
-        echo "❌ Year 2025 or November month not found\n";
+        echo "❌ Year 2030 or November month not found\n";
     }
     
 } catch (Exception $e) {
