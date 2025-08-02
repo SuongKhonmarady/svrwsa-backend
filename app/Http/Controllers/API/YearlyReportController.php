@@ -129,18 +129,20 @@ class YearlyReportController extends Controller
             $data = $request->only(['year_id', 'title', 'description', 'status', 'created_by']);
             $data['status'] = $data['status'] ?? 'draft';
             
-            // Handle file upload
+            $report = YearlyReport::create($data);
+            
+            // Handle file upload using model method
             if ($request->hasFile('file')) {
-                $file = $request->file('file');
-                $filename = time() . '_' . $file->getClientOriginalName();
-                $path = $file->storeAs('yearly_reports', $filename, 'public');
-                
-                $data['file_url'] = Storage::url($path);
-                $data['file_name'] = $file->getClientOriginalName();
-                $data['file_size'] = $file->getSize();
+                if (!$report->uploadFileToS3($request->file('file'))) {
+                    // If upload fails, delete the created report to avoid orphaned records.
+                    $report->delete(); 
+                    return response()->json([
+                        'success' => false, 
+                        'message' => 'Failed to upload file. The report was not created.'
+                    ], 500);
+                }
             }
             
-            $report = YearlyReport::create($data);
             $report->load(['year']);
             
             return response()->json([
@@ -223,21 +225,19 @@ class YearlyReportController extends Controller
             
             $data = $request->only(['year_id', 'title', 'description', 'status', 'created_by']);
             
-            // Handle file upload
+            // Handle file upload using model method
             if ($request->hasFile('file')) {
                 // Delete old file if exists
                 if ($report->file_url) {
-                    $oldPath = str_replace('/storage/', '', $report->file_url);
-                    Storage::disk('public')->delete($oldPath);
+                    $report->deleteFileFromS3();
                 }
                 
-                $file = $request->file('file');
-                $filename = time() . '_' . $file->getClientOriginalName();
-                $path = $file->storeAs('yearly_reports', $filename, 'public');
-                
-                $data['file_url'] = Storage::url($path);
-                $data['file_name'] = $file->getClientOriginalName();
-                $data['file_size'] = $file->getSize();
+                if (!$report->uploadFileToS3($request->file('file'))) {
+                    return response()->json([
+                        'success' => false, 
+                        'message' => 'Failed to upload new file.'
+                    ], 500);
+                }
             }
             
             // Set published_at if status changes to published
@@ -271,10 +271,9 @@ class YearlyReportController extends Controller
         try {
             $report = YearlyReport::findOrFail($id);
             
-            // Delete file if exists
+            // Delete file if exists using model method
             if ($report->file_url) {
-                $path = str_replace('/storage/', '', $report->file_url);
-                Storage::disk('public')->delete($path);
+                $report->deleteFileFromS3();
             }
             
             $report->delete();

@@ -434,7 +434,7 @@
         };
 
         // Authentication Functions
-        async function login() {
+        window.login = async function login() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             if (!email || !password) {
@@ -447,11 +447,13 @@
                 console.log("Login response:", data);
                 if (data.success) {
                     showAuthMessage('Login successful!', 'success');
-                    setTimeout(() => {
-                        hideAuthSection();
-                        showReportsSection();
-                        loadReports();
-                    }, 200); // Ensure DOM update before showing reports
+                    // Immediately hide auth and show reports section
+                    hideAuthSection();
+                    showReportsSection();
+                    // Initialize reports data
+                    await loadReports();
+                    // Force display block for reports section
+                    document.getElementById('reportsSection').style.display = 'block';
                 } else {
                     showAuthMessage(data.message || 'Login failed', 'error');
                 }
@@ -460,7 +462,7 @@
             }
         }
 
-        async function logout() {
+        window.logout = async function logout() {
             await api.logout();
             showAuthMessage('Logged out successfully', 'success');
             hideReportsSection();
@@ -468,58 +470,114 @@
         }
 
         // Reports Management Functions
-        async function loadReports() {
+        window.loadReports = async function loadReports() {
             if (!api.token) {
                 showReportsMessage('Please login first', 'error');
                 return;
             }
             try {
                 showReportsMessage('Loading reports...', 'loading');
-                const data = await api.getReports(true);
-                displayReports(data.data || []);
-                showReportsMessage('Reports loaded successfully', 'success');
+                console.log('Loading reports with token:', api.token);
+                console.log('Current API base URL:', api.baseUrl);
+                
+                const data = await api.getReports(true); // Get all reports including drafts
+                console.log('Full API Response:', data);
+                console.log('Response type:', typeof data);
+                console.log('Has data property:', data.hasOwnProperty('data'));
+                
+                if (data && data.data && data.data.data) {
+                    // Use the nested data array from the paginated response
+                    console.log('Reports array length:', data.data.data.length);
+                    console.log('First report (if any):', data.data.data[0]);
+                    displayReports(data.data.data);
+                    
+                    // Show pagination info
+                    const pagination = data.data;
+                    showReportsMessage(`Showing ${pagination.from} to ${pagination.to} of ${pagination.total} reports`, 'success');
+                } else {
+                    console.warn('No reports data in response:', data);
+                    displayReports([]);
+                    showReportsMessage('No reports found', 'info');
+                }
             } catch (error) {
+                console.error('Error loading reports:', error);
                 showReportsMessage(error.message, 'error');
+                displayReports([]); // Show empty state
             }
         }
 
         function displayReports(reports) {
             const reportsList = document.getElementById('reportsList');
+            console.log('Displaying reports:', reports);
+
             if (!Array.isArray(reports) || reports.length === 0) {
-                reportsList.innerHTML = '<div class="loading">No reports found</div>';
+                reportsList.innerHTML = `
+                    <div class="report-item" style="text-align: center;">
+                        <h4>No Reports Found</h4>
+                        <p>Click the "Create New Report" button to add your first report.</p>
+                    </div>`;
                 return;
             }
-            reportsList.innerHTML = reports.map(report => `
-                <div class="report-item">
-                    <h4>${report.title}</h4>
-                    <p><strong>Description:</strong> ${report.description || 'No description'}</p>
-                    <p><strong>Year:</strong> ${report.year?.name || 'N/A'} | <strong>Month:</strong> ${report.month?.name || 'N/A'}</p>
-                    <p><strong>Status:</strong> <span class="status-badge status-${report.status}">${report.status}</span></p>
-                    <p><strong>Created by:</strong> ${report.created_by || 'N/A'}</p>
-                    ${report.file_url ? `<p><strong>File:</strong> <a href="${report.file_url}" target="_blank">${report.file_name}</a> (${report.formatted_file_size})</p>` : ''}
-                    <p><strong>Created:</strong> ${new Date(report.created_at).toLocaleDateString()}</p>
-                    <div class="report-actions">
-                        <button class="btn" onclick="editReport(${report.id})">✏️ Edit</button>
-                        <button class="btn btn-danger" onclick="deleteReport(${report.id})">🗑️ Delete</button>
-                        ${report.status === 'draft' ? 
-                            `<button class="btn btn-success" onclick="publishReport(${report.id})">📤 Publish</button>` : 
-                            `<button class="btn btn-secondary" onclick="unpublishReport(${report.id})">📥 Unpublish</button>`
-                        }
+
+            let html = '';
+            reports.forEach(report => {
+                const formattedDate = report.created_at ? new Date(report.created_at).toLocaleDateString() : 'N/A';
+                const fileInfo = report.file_url ? 
+                    `<p><strong>File:</strong> 
+                        <a href="${report.file_url}" target="_blank">${report.file_name}</a> 
+                        ${report.file_size ? `(${formatFileSize(report.file_size)})` : ''}
+                    </p>` : 
+                    '<p><em>No file attached</em></p>';
+
+                html += `
+                    <div class="report-item">
+                        <h4>${report.title || 'Untitled Report'}</h4>
+                        <p><strong>Description:</strong> ${report.description || 'No description'}</p>
+                        <p><strong>Year:</strong> ${report.year ? report.year.year_value : 'N/A'} | 
+                           <strong>Month:</strong> ${report.month ? report.month.month : 'N/A'}</p>
+                        <p><strong>Status:</strong> 
+                           <span class="status-badge status-${report.status || 'draft'}">${report.status || 'draft'}</span></p>
+                        <p><strong>Created by:</strong> ${report.created_by || 'N/A'}</p>
+                        ${fileInfo}
+                        <p><strong>Created:</strong> ${formattedDate}</p>
+                        <div class="report-actions">
+                            <button class="btn" onclick="editReport(${report.id})">✏️ Edit</button>
+                            <button class="btn btn-danger" onclick="deleteReport(${report.id})">🗑️ Delete</button>
+                            ${report.status === 'published' ? 
+                                `<button class="btn btn-secondary" onclick="unpublishReport(${report.id})">📝 Unpublish</button>` :
+                                `<button class="btn btn-success" onclick="publishReport(${report.id})">📢 Publish</button>`
+                            }
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            });
+
+            reportsList.innerHTML = html;
         }
+        
 
         // Modal Functions
-        function showCreateModal() {
-            currentEditingId = null;
-            document.getElementById('modalTitle').textContent = 'Create New Report';
-            document.getElementById('reportForm').reset();
-            document.getElementById('fileInfo').style.display = 'none';
-            document.getElementById('uploadProgress').style.display = 'none';
-            selectedFile = null;
-            populateYearMonthDropdowns();
-            document.getElementById('reportModal').style.display = 'block';
+        window.showCreateModal = async function showCreateModal() {
+            try {
+                currentEditingId = null;
+                document.getElementById('modalTitle').textContent = 'Create New Report';
+                document.getElementById('reportForm').reset();
+                document.getElementById('fileInfo').style.display = 'none';
+                document.getElementById('uploadProgress').style.display = 'none';
+                selectedFile = null;
+                
+                // Show the modal first
+                document.getElementById('reportModal').style.display = 'block';
+                
+                // Then populate dropdowns
+                await populateYearMonthDropdowns();
+                
+                // Ensure the modal is still visible after populating dropdowns
+                document.getElementById('reportModal').style.display = 'block';
+            } catch (error) {
+                console.error('Error showing create modal:', error);
+                showModalMessage('Error initializing form: ' + error.message, 'error');
+            }
         }
 
         async function editReport(id) {
@@ -558,44 +616,122 @@
         async function populateYearMonthDropdowns() {
             const yearSelect = document.getElementById('yearId');
             const monthSelect = document.getElementById('monthId');
+            
             yearSelect.innerHTML = '<option value="">Select Year</option>';
             monthSelect.innerHTML = '<option value="">Select Month</option>';
+            
             try {
-                const [years, months] = await Promise.all([
-                    api.getYears(),
-                    api.getMonths()
-                ]);
-                (years.data || []).forEach(y => {
-                    yearSelect.innerHTML += `<option value="${y.id}">${y.name}</option>`;
-                });
-                (months.data || []).forEach(m => {
-                    monthSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
-                });
-            } catch (e) {
-                // fallback or show error
+                console.log('Fetching years and months...');
+                showModalMessage('Loading years and months...', 'loading');
+                
+                // Fetch years and months
+                let yearsData, monthsData;
+                try {
+                    yearsData = await api.getYears();
+                    console.log('Years response:', yearsData);
+                } catch (error) {
+                    console.error('Error fetching years:', error);
+                    showModalMessage('Error loading years', 'error');
+                    return;
+                }
+
+                try {
+                    monthsData = await api.getMonths();
+                    console.log('Months response:', monthsData);
+                } catch (error) {
+                    console.error('Error fetching months:', error);
+                    showModalMessage('Error loading months', 'error');
+                    return;
+                }
+
+                // Populate years
+                if (yearsData && yearsData.data) {
+                    yearsData.data.forEach(year => {
+                        const option = document.createElement('option');
+                        option.value = year.id;
+                        option.textContent = year.name || year.year_value;
+                        yearSelect.appendChild(option);
+                    });
+                }
+
+                // Populate months
+                if (monthsData && monthsData.data) {
+                    console.log('Populating months dropdown with:', monthsData.data);
+                    monthsData.data
+                        .sort((a, b) => a.id - b.id) // Sort months by ID to ensure correct order
+                        .forEach(month => {
+                            const option = document.createElement('option');
+                            option.value = month.id;
+                            option.textContent = month.name || `Month ${month.id}`; // Fallback if name is missing
+                            monthSelect.appendChild(option);
+                        });
+                } else {
+                    console.warn('No month data available:', monthsData);
+                    showModalMessage('No months data available', 'error');
+                }
+
+                showModalMessage('Years and months loaded successfully', 'success');
+            } catch (error) {
+                console.error('Error in populateYearMonthDropdowns:', error);
+                showModalMessage('Error loading form data: ' + error.message, 'error');
             }
         }
 
         // File handling
         function handleFileSelect(input) {
             const file = input.files[0];
+            const fileInfo = document.getElementById('fileInfo');
+            const fileUploadText = document.getElementById('fileUploadText');
+
+            // Reset previous file info
+            fileInfo.style.display = 'none';
+            selectedFile = null;
+            
             if (file) {
-                selectedFile = file;
                 try {
+                    // Validate file type and size
                     api.validateFile(file);
+                    
+                    // Update the selected file and display info
+                    selectedFile = file;
+                    
+                    // Update the file info display
+                    fileInfo.innerHTML = `
+                        <strong>Selected file:</strong> ${file.name}<br>
+                        <strong>Size:</strong> ${api.formatFileSize(file.size)}<br>
+                        <strong>Type:</strong> ${file.type}
+                        <br><br>
+                        <button type="button" class="btn btn-danger" onclick="clearFileSelection()">Remove File</button>
+                    `;
+                    fileInfo.style.display = 'block';
+                    
+                    // Update the upload text
+                    fileUploadText.innerHTML = '📎 File selected. Click to change';
+                    
                 } catch (err) {
                     showModalMessage(err.message, 'error');
                     input.value = '';
-                    selectedFile = null;
-                    return;
+                    fileUploadText.innerHTML = `
+                        📁 Click to select PDF file or drag & drop here<br>
+                        <small>Supported formats: PDF, DOC, DOCX, XLS, XLSX (Max: 10MB)</small>
+                    `;
                 }
-                document.getElementById('fileInfo').innerHTML = `
-                    <strong>Selected file:</strong> ${file.name}<br>
-                    <strong>Size:</strong> ${api.formatFileSize(file.size)}<br>
-                    <strong>Type:</strong> ${file.type}
-                `;
-                document.getElementById('fileInfo').style.display = 'block';
             }
+        }
+
+        // Clear file selection
+        function clearFileSelection() {
+            const input = document.getElementById('file');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileUploadText = document.getElementById('fileUploadText');
+            
+            input.value = '';
+            selectedFile = null;
+            fileInfo.style.display = 'none';
+            fileUploadText.innerHTML = `
+                📁 Click to select PDF file or drag & drop here<br>
+                <small>Supported formats: PDF, DOC, DOCX, XLS, XLSX (Max: 10MB)</small>
+            `;
         }
 
         // Form submission
@@ -605,23 +741,62 @@
                 showModalMessage('Please login first', 'error');
                 return;
             }
+
+            // Validate required fields
+            const yearId = document.getElementById('yearId').value;
+            const monthId = document.getElementById('monthId').value;
+            const title = document.getElementById('title').value;
+            const description = document.getElementById('description').value;
+            const status = document.getElementById('status').value;
+            const createdBy = document.getElementById('createdBy').value;
+
+            if (!yearId || !monthId) {
+                showModalMessage('Please select both year and month', 'error');
+                return;
+            }
+
+            if (!title.trim()) {
+                showModalMessage('Title is required', 'error');
+                return;
+            }
+
             const reportData = {
-                year_id: document.getElementById('yearId').value,
-                month_id: document.getElementById('monthId').value,
-                title: document.getElementById('title').value,
-                description: document.getElementById('description').value,
-                status: document.getElementById('status').value,
-                created_by: document.getElementById('createdBy').value
+                year_id: yearId,
+                month_id: monthId,
+                title: title.trim(),
+                description: description.trim(),
+                status: status,
+                created_by: createdBy.trim()
             };
+
+            // File validation
+            if (selectedFile) {
+                try {
+                    api.validateFile(selectedFile);
+                } catch (err) {
+                    showModalMessage(err.message, 'error');
+                    return;
+                }
+            }
+
             try {
                 showModalMessage('Saving report...', 'loading');
+                
+                // Show progress bar for file upload
+                const progressBar = document.getElementById('uploadProgress');
+                const progressFill = progressBar.querySelector('.progress-fill');
+                progressBar.style.display = 'block';
+                progressFill.style.width = '0%';
+
                 let data;
                 if (currentEditingId) {
                     data = await api.updateReport(currentEditingId, reportData, selectedFile);
                 } else {
                     data = await api.createReport(reportData, selectedFile);
                 }
+
                 if (data.success) {
+                    progressFill.style.width = '100%';
                     showModalMessage('Report saved successfully!', 'success');
                     setTimeout(() => {
                         closeModal();
@@ -631,7 +806,11 @@
                     showModalMessage(data.message || 'Failed to save report', 'error');
                 }
             } catch (error) {
-                showModalMessage(error.message, 'error');
+                console.error('Error saving report:', error);
+                showModalMessage(error.message || 'An unexpected error occurred', 'error');
+            } finally {
+                // Hide progress bar
+                document.getElementById('uploadProgress').style.display = 'none';
             }
         });
 
@@ -697,19 +876,39 @@
         }
 
         function showReportsSection() {
-            document.getElementById('reportsSection').style.display = 'block';
+            const reportsSection = document.getElementById('reportsSection');
+            reportsSection.style.display = 'block';
+            // Force a reflow to ensure the display change takes effect
+            void reportsSection.offsetHeight;
         }
 
         function hideReportsSection() {
-            document.getElementById('reportsSection').style.display = 'none';
+            const reportsSection = document.getElementById('reportsSection');
+            reportsSection.style.display = 'none';
+            // Force a reflow
+            void reportsSection.offsetHeight;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0 || !bytes) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         function hideAuthSection() {
-            document.getElementById('authSection').style.display = 'none';
+            const authSection = document.getElementById('authSection');
+            authSection.style.display = 'none';
+            // Force a reflow
+            void authSection.offsetHeight;
         }
 
         function showAuthSection() {
-            document.getElementById('authSection').style.display = 'block';
+            const authSection = document.getElementById('authSection');
+            authSection.style.display = 'block';
+            // Force a reflow
+            void authSection.offsetHeight;
         }
 
         // Modal click outside to close

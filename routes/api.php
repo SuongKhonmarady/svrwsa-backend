@@ -9,6 +9,7 @@ use App\Http\Controllers\API\MonthController;
 use App\Http\Controllers\API\MonthlyReportController;
 use App\Http\Controllers\API\YearlyReportController;
 use App\Http\Controllers\API\ReportAnalyticsController;
+use App\http\Controllers\API\ServiceRequestController;
 
 Route::get('/test', function () {
     return response()->json(['message' => 'API test route works!']);
@@ -89,6 +90,10 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         Route::put('/news/{id}', [NewsController::class, 'update']);
         Route::delete('/news/{id}', [NewsController::class, 'destroy']);
         
+        // Update service request status
+        Route::patch('/service-requests/{id}/status', [ServiceRequestController::class, 'updateStatus']);
+
+
         // Report management (CRUD operations)
         Route::prefix('reports/admin')->group(function () {
             // Monthly Reports CRUD
@@ -110,3 +115,9 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
 // Public news routes
 Route::get('/news/{id}', [NewsController::class, 'show']);
 Route::get('/news', [NewsController::class, 'index']);
+
+Route::get('/statuses', fn() => \App\Models\Status::all());
+
+// Public service request routes
+Route::get('/service-requests', [ServiceRequestController::class, 'index']);
+Route::post('/service-requests', [ServiceRequestController::class, 'store']);

@@ -8,6 +8,7 @@ class ReportsAPI {
         this.baseUrl = baseUrl;
         this.token = localStorage.getItem('authToken');
         this.onTokenExpired = null;
+        console.log('API initialized with base URL:', this.baseUrl);
     }
 
     // Set authentication token
@@ -109,12 +110,26 @@ class ReportsAPI {
 
     // Reports Management Methods
     async getReports(includeAll = false) {
-        const endpoint = includeAll ? '/reports/staff/monthly/all' : '/reports/monthly';
-        const response = await fetch(`${this.baseUrl}${endpoint}`, {
-            headers: this.getHeaders()
-        });
+        try {
+            console.log('Fetching reports...');
+            const endpoint = includeAll ? '/reports/staff/monthly/all' : '/reports/monthly';
+            console.log('Using endpoint:', `${this.baseUrl}${endpoint}`);
+            console.log('Request headers:', this.getHeaders());
+            
+            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+                method: 'GET',
+                headers: this.getHeaders()
+            });
 
-        return await this.handleResponse(response);
+            console.log('Raw response:', response);
+            const data = await this.handleResponse(response);
+            console.log('Reports data received:', data);
+            console.log('Reports array:', data.data);
+            return data;
+        } catch (error) {
+            console.error('Error fetching reports:', error);
+            throw new Error(`Failed to fetch reports: ${error.message}`);
+        }
     }
 
     async getReport(id) {
@@ -140,7 +155,7 @@ class ReportsAPI {
             formData.append('file', file);
         }
 
-        const response = await fetch(`${this.baseUrl}/admin/reports/monthly`, {
+        const response = await fetch(`${this.baseUrl}/reports/admin/monthly`, {
             method: 'POST',
             headers: this.getHeaders(false), // Don't include Content-Type for FormData
             body: formData
@@ -164,7 +179,7 @@ class ReportsAPI {
             formData.append('file', file);
         }
 
-        const response = await fetch(`${this.baseUrl}/admin/reports/monthly/${id}`, {
+        const response = await fetch(`${this.baseUrl}/reports/admin/monthly/${id}`, {
             method: 'PUT',
             headers: this.getHeaders(false), // Don't include Content-Type for FormData
             body: formData
@@ -174,7 +189,7 @@ class ReportsAPI {
     }
 
     async deleteReport(id) {
-        const response = await fetch(`${this.baseUrl}/admin/reports/monthly/${id}`, {
+        const response = await fetch(`${this.baseUrl}/reports/admin/monthly/${id}`, {
             method: 'DELETE',
             headers: this.getHeaders()
         });
@@ -210,11 +225,20 @@ class ReportsAPI {
     }
 
     async getMonths() {
-        const response = await fetch(`${this.baseUrl}/reports/months`, {
-            headers: this.getHeaders()
-        });
+        try {
+            console.log('Fetching months from:', `${this.baseUrl}/reports/months`);
+            const response = await fetch(`${this.baseUrl}/reports/months`, {
+                method: 'GET',
+                headers: this.getHeaders()
+            });
 
-        return await this.handleResponse(response);
+            const data = await this.handleResponse(response);
+            console.log('Months response:', data);
+            return data;
+        } catch (error) {
+            console.error('Error fetching months:', error);
+            throw new Error(`Failed to fetch months: ${error.message}`);
+        }
     }
 
     async getCurrentYear() {
@@ -256,6 +280,8 @@ class ReportsAPI {
             'application/pdf',
             'application/msword',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'text/plain'
         ];
 
