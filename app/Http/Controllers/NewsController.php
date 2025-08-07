@@ -29,11 +29,13 @@ class NewsController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-        'title' => 'required|string',
-        'content' => 'required|string',
-        'image' => 'nullable|string',
-        'published_at' => 'nullable|date',
-    ]);
+            'title' => 'required|string',
+            'content' => 'required|string',
+            'image' => 'nullable|string',
+            'published_at' => 'nullable|date',
+            'featured' => 'boolean',
+            'category_id' => 'nullable|exists:categories,id',
+        ]);
 
         $news = News::create($validated);
 
@@ -43,14 +45,8 @@ class NewsController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(News $news)
     {
-        $news = News::find($id);
-
-        if (!$news){
-            return response()->json(['massage' => 'News not found'], 404);
-        }
-
         return response()->json($news);
     }
 
@@ -65,19 +61,15 @@ class NewsController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, News $news)
     {
-        $news = News::find($id);
-        
-        if (!$news) {
-            return response()->json(['message' => 'News not found'], 404);
-        }
-        
         $validated = $request->validate([
             'title' => 'required|string',
             'content' => 'required|string',
             'image' => 'nullable|string',
             'published_at' => 'nullable|date',
+            'featured' => 'boolean',
+            'category_id' => 'nullable|exists:categories,id',
         ]);
 
         $news->update($validated);
@@ -88,14 +80,8 @@ class NewsController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(News $news)
     {
-        $news = News::find($id);
-        
-        if (!$news) {
-            return response()->json(['message' => 'News not found'], 404);
-        }
-        
         $news->delete();
 
         return response()->json(['message' => 'News deleted successfully']);

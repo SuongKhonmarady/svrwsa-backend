@@ -12,7 +12,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // CSRF protection only for web routes, not API routes
         $middleware->web(append: [
+            \App\Http\Middleware\VerifyCsrfToken::class,
+        ]);
+        
+        // Ensure API routes don't get CSRF middleware
+        $middleware->api(remove: [
             \App\Http\Middleware\VerifyCsrfToken::class,
         ]);
         

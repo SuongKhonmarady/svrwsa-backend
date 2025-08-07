@@ -1,0 +1,217 @@
+{
+  "info": {
+    "name": "Service Request Document Upload API",
+    "description": "API collection for testing service request submission with document uploads",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Submit Service Request with Documents",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "name",
+              "value": "Suong Khonmarady",
+              "type": "text"
+            },
+            {
+              "key": "email",
+              "value": "test@gmail.com",
+              "type": "text"
+            },
+            {
+              "key": "phone",
+              "value": "0987654321",
+              "type": "text"
+            },
+            {
+              "key": "address",
+              "value": "Phnom Penh",
+              "type": "text"
+            },
+            {
+              "key": "service_type",
+              "value": "Water Supply",
+              "type": "text"
+            },
+            {
+              "key": "details",
+              "value": "Need new water connection",
+              "type": "text"
+            },
+            {
+              "key": "id_card[]",
+              "type": "file",
+              "src": "/path/to/front.jpg",
+              "description": "Front side of ID card"
+            },
+            {
+              "key": "id_card[]",
+              "type": "file",
+              "src": "/path/to/back.jpg",
+              "description": "Back side of ID card"
+            },
+            {
+              "key": "family_book[]",
+              "type": "file",
+              "src": "/path/to/page1.jpg",
+              "description": "Family book page 1"
+            },
+            {
+              "key": "family_book[]",
+              "type": "file",
+              "src": "/path/to/page2.jpg",
+              "description": "Family book page 2 (optional)"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/service-requests",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "service-requests"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get All Service Requests",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/service-requests",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "service-requests"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Single Service Request",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/service-requests/1",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "service-requests",
+            "1"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update Service Request Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"status_id\": 2\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/service-requests/1/status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "service-requests",
+            "1",
+            "status"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get All Statuses",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/statuses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "statuses"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_auth_token_here",
+      "type": "string"
+    }
+  ]
+}

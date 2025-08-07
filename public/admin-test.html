@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+        }
+        .success {
+            border-color: #28a745;
+            background-color: #d4edda;
+        }
+        .error {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔑 Admin Login & Document Access Test</h1>
+    
+    <div class="container">
+        <h2>Step 1: Test Admin Login</h2>
+        <input type="email" id="adminEmail" placeholder="Admin Email" value="">
+        <input type="password" id="adminPassword" placeholder="Admin Password" value="">
+        <button onclick="testLogin()">Test Login</button>
+        <div id="loginResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: Test Admin Endpoints</h2>
+        <button onclick="testAdminRequests()" id="testBtn" disabled>Test Admin Service Requests</button>
+        <div id="requestsResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Test Document Access</h2>
+        <input type="number" id="requestId" placeholder="Service Request ID" value="5">
+        <button onclick="testDocumentAccess()" id="docBtn" disabled>Test Document Access</button>
+        <div id="documentResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Quick Links</h2>
+        <a href="admin-documents.html" target="_blank">🔒 Open Admin Document Viewer</a><br><br>
+        <a href="view-documents.html" target="_blank">👥 Open Public Viewer (No Documents)</a><br><br>
+        <a href="service-request-form.html" target="_blank">📝 Submit New Request</a>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000/api';
+        let authToken = null;
+
+        async function testLogin() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            const resultDiv = document.getElementById('loginResult');
+
+            if (!email || !password) {
+                showResult(resultDiv, 'Please enter both email and password', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const result = await response.json();
+                
+                console.log('Login response:', result); // Debug log
+
+                // Check if login was actually successful - handle the actual response structure
+                if (response.ok && result.token) {
+                    authToken = result.token;
+                    showResult(resultDiv, `✅ Login Successful!\n\nToken: ${authToken.substring(0, 20)}...\nUser: ${result.user?.name || 'Unknown'}\nRole: ${result.user?.role || 'N/A'}\nMessage: ${result.message}`, 'success');
+                    
+                    // Enable other test buttons
+                    document.getElementById('testBtn').disabled = false;
+                    document.getElementById('docBtn').disabled = false;
+                } else {
+                    // Handle different error cases
+                    let errorMessage = 'Login failed';
+                    
+                    if (!response.ok) {
+                        errorMessage = `HTTP ${response.status}: ${result.message || response.statusText}`;
+                    } else if (result.message) {
+                        errorMessage = result.message;
+                    } else {
+                        errorMessage = 'Authentication failed - invalid credentials';
+                    }
+                    
+                    showResult(resultDiv, `❌ Login Failed: ${errorMessage}\n\nFull response: ${JSON.stringify(result, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(resultDiv, `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testAdminRequests() {
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+
+            const resultDiv = document.getElementById('requestsResult');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/admin/service-requests`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    const requestsInfo = result.data.map(req => 
+                        `ID: ${req.id}, Name: ${req.name}, Documents: ID Card(${req.id_card?.length || 0}), Family Book(${req.family_book?.length || 0})`
+                    ).join('\n');
+                    
+                    showResult(resultDiv, `✅ Admin Access Successful!\n\nTotal Requests: ${result.data.length}\n\n${requestsInfo}`, 'success');
+                } else {
+                    showResult(resultDiv, `❌ Failed: ${result.message || 'Access denied'}`, 'error');
+                }
+            } catch (error) {
+                showResult(resultDiv, `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDocumentAccess() {
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+
+            const requestId = document.getElementById('requestId').value;
+            const resultDiv = document.getElementById('documentResult');
+
+            if (!requestId) {
+                showResult(resultDiv, 'Please enter a service request ID', 'error');
+                return;
+            }
+
+            try {
+                // First get the request details
+                const requestResponse = await fetch(`${API_BASE_URL}/admin/service-requests/${requestId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!requestResponse.ok) {
+                    showResult(resultDiv, `❌ Request ${requestId} not found`, 'error');
+                    return;
+                }
+
+                const requestResult = await requestResponse.json();
+                const request = requestResult.data;
+
+                let documentTests = [];
+
+                // Test ID card access
+                if (request.id_card && request.id_card.length > 0) {
+                    for (let i = 0; i < request.id_card.length; i++) {
+                        const filename = request.id_card[i].split('/').pop();
+                        const docResponse = await fetch(
+                            `${API_BASE_URL}/admin/service-requests/${requestId}/documents/id_doc/${filename}`,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${authToken}`
+                                }
+                            }
+                        );
+                        documentTests.push(`ID Card ${filename}: ${docResponse.ok ? '✅ Accessible' : '❌ Failed'}`);
+                    }
+                }
+
+                // Test family book access
+                if (request.family_book && request.family_book.length > 0) {
+                    for (let i = 0; i < request.family_book.length; i++) {
+                        const filename = request.family_book[i].split('/').pop();
+                        const docResponse = await fetch(
+                            `${API_BASE_URL}/admin/service-requests/${requestId}/documents/family_book/${filename}`,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${authToken}`
+                                }
+                            }
+                        );
+                        documentTests.push(`Family Book ${filename}: ${docResponse.ok ? '✅ Accessible' : '❌ Failed'}`);
+                    }
+                }
+
+                const testResults = documentTests.length > 0 
+                    ? documentTests.join('\n')
+                    : 'No documents found for this request';
+
+                showResult(resultDiv, `📋 Request ${requestId} - ${request.name}\n\nDocument Access Tests:\n${testResults}`, 'success');
+
+            } catch (error) {
+                showResult(resultDiv, `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function showResult(element, message, type) {
+            element.style.display = 'block';
+            element.className = `result ${type}`;
+            element.innerHTML = `<pre>${message}</pre>`;
+        }
+    </script>
+</body>
+</html>

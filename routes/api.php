@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\NewsController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\API\YearController;
 use App\Http\Controllers\API\MonthController;
@@ -87,11 +88,19 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
     Route::middleware(['admin'])->group(function () {
         // News management
         Route::post('/news', [NewsController::class, 'store']);
-        Route::put('/news/{id}', [NewsController::class, 'update']);
-        Route::delete('/news/{id}', [NewsController::class, 'destroy']);
+        Route::put('/news/{news}', [NewsController::class, 'update']);
+        Route::delete('/news/{news}', [NewsController::class, 'destroy']);
         
-        // Update service request status
+        // Categories management
+        Route::post('/categories', [CategoryController::class, 'store']);
+        Route::put('/categories/{category}', [CategoryController::class, 'update']);
+        Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
+        
+        // Service request management (admin only)
         Route::patch('/service-requests/{id}/status', [ServiceRequestController::class, 'updateStatus']);
+        Route::get('/admin/service-requests', [ServiceRequestController::class, 'adminIndex']);
+        Route::get('/admin/service-requests/{id}', [ServiceRequestController::class, 'adminShow']);
+        Route::get('/admin/service-requests/{id}/documents/{type}/{filename}', [ServiceRequestController::class, 'serveDocument']);
 
 
         // Report management (CRUD operations)
@@ -113,8 +122,12 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
 });
 
 // Public news routes
-Route::get('/news/{id}', [NewsController::class, 'show']);
+Route::get('/news/{news}', [NewsController::class, 'show']);
 Route::get('/news', [NewsController::class, 'index']);
+
+// Public categories routes
+Route::get('/categories', [CategoryController::class, 'index']);
+Route::get('/categories/{category}', [CategoryController::class, 'show']);
 
 Route::get('/statuses', fn() => \App\Models\Status::all());
 
