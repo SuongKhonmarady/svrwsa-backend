@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
 use Carbon\Carbon;
 use App\Models\User;
 
@@ -37,6 +39,9 @@ class AuthController extends Controller
             $tokenExpiry
         )->plainTextToken;
 
+        // Fire login event for activity logging
+        event(new Login('sanctum', $user, false));
+
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
@@ -54,6 +59,11 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        $user = $request->user();
+        
+        // Fire logout event for activity logging
+        event(new Logout('sanctum', $user));
+
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
@@ -67,8 +77,26 @@ class AuthController extends Controller
      */
     public function logoutAll(Request $request)
     {
-        $tokenCount = $request->user()->tokens()->count();
-        $request->user()->tokens()->delete();
+        $user = $request->user();
+        $tokenCount = $user->tokens()->count();
+        
+        // Log the logout activity for admin/staff users before deleting tokens
+        if (in_array($user->role, ['admin', 'staff'])) {
+            ActivityLog::create([
+                'user_id'    => $user->id,
+                'role'       => $user->role,
+                'action'     => 'logout_all',
+                'table_name' => null,
+                'record_id'  => null,
+                'ip_address' => $request->ip(),
+                'location'   => $this->getLocation($request->ip()),
+                'user_agent' => $request->header('User-Agent'),
+                'old_data'   => null,
+                'new_data'   => ['revoked_tokens' => $tokenCount],
+            ]);
+        }
+
+        $user->tokens()->delete();
 
         return response()->json([
             'message' => 'Logged out from all devices',
@@ -166,6 +194,23 @@ class AuthController extends Controller
             'deleted_tokens' => $expiredCount,
             'cleaned_at' => now()->toISOString()
         ]);
+    }
+
+    /**
+     * Get location from IP address
+     */
+    private function getLocation($ip)
+    {
+        try {
+            $response = @file_get_contents("http://ip-api.com/json/{$ip}?fields=city,country");
+            if ($response) {
+                $data = json_decode($response);
+                return ($data->city ?? '') . ', ' . ($data->country ?? '');
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+        return null;
     }
 }
 

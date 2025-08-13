@@ -115,7 +115,7 @@ class YearlyReportController extends Controller
                     'errors' => $validator->errors()
                 ], 422);
             }
-            
+
             // Check if report already exists for this year
             $existingReport = YearlyReport::where('year_id', $request->year_id)->first();
                 
@@ -125,24 +125,42 @@ class YearlyReportController extends Controller
                     'message' => 'Yearly report already exists for this year'
                 ], 409);
             }
-            
+
             $data = $request->only(['year_id', 'title', 'description', 'status', 'created_by']);
             $data['status'] = $data['status'] ?? 'draft';
-            
-            $report = YearlyReport::create($data);
-            
-            // Handle file upload using model method
+
+            // Handle file upload before creating the record to avoid double activity logging
             if ($request->hasFile('file')) {
-                if (!$report->uploadFileToS3($request->file('file'))) {
-                    // If upload fails, delete the created report to avoid orphaned records.
-                    $report->delete(); 
+                $file = $request->file('file');
+                
+                // Generate file path
+                $year = Year::find($data['year_id']);
+                
+                $fileName = $file->getClientOriginalName();
+                $filePath = "yearly_reports/{$year->year_value}/{$fileName}";
+                
+                // Store file to S3
+                $storedPath = Storage::disk('s3')->putFileAs(
+                    dirname($filePath),
+                    $file,
+                    basename($filePath)
+                );
+                
+                if ($storedPath) {
+                    // Add file information to data before creating record
+                    $data['file_url'] = Storage::disk('s3')->url($storedPath);
+                    $data['file_name'] = $file->getClientOriginalName();
+                    $data['file_size'] = $file->getSize();
+                } else {
                     return response()->json([
                         'success' => false, 
                         'message' => 'Failed to upload file. The report was not created.'
                     ], 500);
                 }
             }
-            
+
+            // Create report with all data including file info (single activity log entry)
+            $report = YearlyReport::create($data);
             $report->load(['year']);
             
             return response()->json([

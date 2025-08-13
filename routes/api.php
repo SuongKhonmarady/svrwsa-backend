@@ -11,6 +11,7 @@ use App\Http\Controllers\API\MonthlyReportController;
 use App\Http\Controllers\API\YearlyReportController;
 use App\Http\Controllers\API\ReportAnalyticsController;
 use App\http\Controllers\API\ServiceRequestController;
+use App\Http\Controllers\API\SearchController;
 
 Route::get('/test', function () {
     return response()->json(['message' => 'API test route works!']);
@@ -132,5 +133,8 @@ Route::get('/categories/{category}', [CategoryController::class, 'show']);
 Route::get('/statuses', fn() => \App\Models\Status::all());
 
 // Public service request routes
-Route::get('/service-requests', [ServiceRequestController::class, 'index']);
+// Route::get('/service-requests', [ServiceRequestController::class, 'index']);
 Route::post('/service-requests', [ServiceRequestController::class, 'store']);
+
+// Public search routes
+Route::get('/search', [SearchController::class, 'globalSearch']);

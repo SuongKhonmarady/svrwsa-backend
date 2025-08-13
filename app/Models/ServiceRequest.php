@@ -33,6 +33,11 @@ class ServiceRequest extends Model
         'family_book' => 'array',
     ];
 
+    /**
+     * Get the status associated with the service request.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
     public function status()
     {
         return $this->belongsTo(Status::class);

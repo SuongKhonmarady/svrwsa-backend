@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use App\Http\Requests\MonthlyReportRequest;
 
 class MonthlyReportController extends Controller
@@ -116,12 +117,30 @@ class MonthlyReportController extends Controller
             // Securely add user attribution from the authenticated user's session.
             $data['created_by'] = auth()->user()->name;
             
-            $report = MonthlyReport::create($data);
-            
+            // Handle file upload before creating the record to avoid double activity logging
             if ($request->hasFile('file')) {
-                if (!$report->uploadFileToS3($request->file('file'))) {
-                    // If upload fails, delete the created report to avoid orphaned records.
-                    $report->delete(); 
+                $file = $request->file('file');
+                
+                // Generate file path
+                $year = Year::find($data['year_id']);
+                $month = Month::find($data['month_id']);
+                
+                $fileName = $file->getClientOriginalName();
+                $filePath = "monthly_reports/{$year->year_value}/" . strtolower($month->month) . "/{$fileName}";
+                
+                // Store file to S3
+                $storedPath = Storage::disk('s3')->putFileAs(
+                    dirname($filePath),
+                    $file,
+                    basename($filePath)
+                );
+                
+                if ($storedPath) {
+                    // Add file information to data before creating record
+                    $data['file_url'] = Storage::disk('s3')->url($storedPath);
+                    $data['file_name'] = $file->getClientOriginalName();
+                    $data['file_size'] = $file->getSize();
+                } else {
                     return response()->json([
                         'success' => false, 
                         'error' => 'Failed to upload file. The report was not created.'
@@ -129,6 +148,8 @@ class MonthlyReportController extends Controller
                 }
             }
             
+            // Create report with all data including file info (single activity log entry)
+            $report = MonthlyReport::create($data);
             $report->load(['year', 'month']);
             
             return response()->json(['success' => true, 'data' => $report, 'message' => 'Monthly report created successfully'], 201);
