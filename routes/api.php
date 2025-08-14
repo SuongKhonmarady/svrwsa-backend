@@ -10,7 +10,7 @@ use App\Http\Controllers\API\MonthController;
 use App\Http\Controllers\API\MonthlyReportController;
 use App\Http\Controllers\API\YearlyReportController;
 use App\Http\Controllers\API\ReportAnalyticsController;
-use App\http\Controllers\API\ServiceRequestController;
+use App\Http\Controllers\API\ServiceRequestController;
 use App\Http\Controllers\API\SearchController;
 
 Route::get('/test', function () {
