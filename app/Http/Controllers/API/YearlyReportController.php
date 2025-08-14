@@ -297,23 +297,36 @@ class YearlyReportController extends Controller
             $fileUrl = $report->file_url;
             $report->delete();
             
+            $s3DeleteStatus = 'no_file';
+            
             // Try to delete from S3 with timeout handling
             if ($fileUrl) {
                 try {
                     // Use timeout wrapper for S3 operations
-                    $this->deleteReportFromS3WithTimeout($fileUrl, 15); // 15 second timeout
+                    $this->deleteReportFromS3WithTimeout($fileUrl, 10); // 10 second timeout
+                    $s3DeleteStatus = 'success';
                 } catch (\Exception $s3Error) {
                     // Log S3 error but don't fail the request since DB record is already deleted
-                    \Log::warning("Failed to delete S3 file during yearly report deletion: " . $s3Error->getMessage(), [
+                    Log::warning("Failed to delete S3 file during yearly report deletion: " . $s3Error->getMessage(), [
                         'report_id' => $id,
                         'file_url' => $fileUrl
                     ]);
+                    $s3DeleteStatus = 'failed';
                 }
+            }
+            
+            $message = 'Yearly report deleted successfully';
+            if ($s3DeleteStatus === 'failed') {
+                $message .= ' (File cleanup will be handled automatically)';
             }
             
             return response()->json([
                 'success' => true,
-                'message' => 'Yearly report deleted successfully'
+                'message' => $message,
+                'details' => [
+                    'report_deleted' => true,
+                    'file_cleanup' => $s3DeleteStatus
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

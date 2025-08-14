@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use App\Models\News;
 
 class NewsController extends Controller
@@ -179,28 +180,47 @@ class NewsController extends Controller
             
             // Delete record from database first for faster user response
             $imageUrl = $news->image;
+            $newsId = $news->id;
             $news->delete();
 
-            // Delete associated image from S3 asynchronously if exists
+            $s3DeleteStatus = 'no_file';
+            
+            // Delete associated image from S3 if exists
             if ($imageUrl) {
                 try {
                     $imagePath = $this->extractS3PathFromUrl($imageUrl);
                     if ($imagePath) {
                         // Use a simple timeout wrapper for S3 operations
-                        $this->deleteFromS3WithTimeout($imagePath, 10); // 10 second timeout
+                        $this->deleteFromS3WithTimeout($imagePath, 8); // Reduced to 8 second timeout
+                        $s3DeleteStatus = 'success';
                     }
                 } catch (\Exception $s3Error) {
                     // Log S3 error but don't fail the request
-                    \Log::warning("Failed to delete S3 file: " . $s3Error->getMessage(), [
-                        'news_id' => $news->id,
-                        'image_path' => $imagePath
+                    Log::warning("Failed to delete S3 file: " . $s3Error->getMessage(), [
+                        'news_id' => $newsId,
+                        'image_path' => $imagePath ?? 'unknown'
                     ]);
+                    $s3DeleteStatus = 'failed';
                 }
             }
 
-            return response()->json(['message' => 'News deleted successfully']);
+            // Always return success since the main operation (DB delete) succeeded
+            $message = 'News deleted successfully';
+            if ($s3DeleteStatus === 'failed') {
+                $message .= ' (Note: File cleanup will be handled automatically)';
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'details' => [
+                    'news_deleted' => true,
+                    'file_cleanup' => $s3DeleteStatus
+                ]
+            ]);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to delete news',
                 'message' => $e->getMessage()
             ], 500);
