@@ -254,13 +254,28 @@ class MonthlyReportController extends Controller
     public function destroy($id): JsonResponse
     {
         try {
+            // Set longer execution time for S3 operations
+            set_time_limit(60);
+            
             $report = MonthlyReport::findOrFail($id);
             
-            if ($report->file_url) {
-                $report->deleteFileFromS3();
-            }
-            
+            // Delete from database first for faster user response
+            $fileUrl = $report->file_url;
             $report->delete();
+            
+            // Try to delete from S3 with timeout handling
+            if ($fileUrl) {
+                try {
+                    // Use timeout wrapper for S3 operations
+                    $this->deleteReportFromS3WithTimeout($fileUrl, 15); // 15 second timeout
+                } catch (\Exception $s3Error) {
+                    // Log S3 error but don't fail the request since DB record is already deleted
+                    \Log::warning("Failed to delete S3 file during report deletion: " . $s3Error->getMessage(), [
+                        'report_id' => $id,
+                        'file_url' => $fileUrl
+                    ]);
+                }
+            }
             
             return response()->json([
                 'success' => true,
@@ -272,6 +287,38 @@ class MonthlyReportController extends Controller
                 'error' => 'Error deleting monthly report: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Delete report file from S3 with timeout handling
+     */
+    private function deleteReportFromS3WithTimeout($fileUrl, $timeout = 15)
+    {
+        try {
+            // Set timeout for S3 operations
+            ini_set('default_socket_timeout', $timeout);
+            
+            // Extract path from URL
+            $parsedUrl = parse_url($fileUrl);
+            $path = ltrim($parsedUrl['path'], '/');
+            
+            // Remove bucket name from path if present
+            $bucketName = env('AWS_BUCKET');
+            if (strpos($path, $bucketName . '/') === 0) {
+                $path = substr($path, strlen($bucketName) + 1);
+            }
+            
+            if (Storage::disk('s3')->exists($path)) {
+                Storage::disk('s3')->delete($path);
+            }
+        } catch (\Exception $e) {
+            // Reset timeout and re-throw
+            ini_restore('default_socket_timeout');
+            throw $e;
+        }
+        
+        // Reset timeout
+        ini_restore('default_socket_timeout');
     }
 
     /**

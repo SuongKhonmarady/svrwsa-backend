@@ -174,15 +174,29 @@ class NewsController extends Controller
     public function destroy(News $news)
     {
         try {
-            // Delete associated image from S3 if exists
-            if ($news->image) {
-                $imagePath = $this->extractS3PathFromUrl($news->image);
-                if ($imagePath && Storage::disk('s3')->exists($imagePath)) {
-                    Storage::disk('s3')->delete($imagePath);
+            // Set longer execution time for S3 operations
+            set_time_limit(60);
+            
+            // Delete record from database first for faster user response
+            $imageUrl = $news->image;
+            $news->delete();
+
+            // Delete associated image from S3 asynchronously if exists
+            if ($imageUrl) {
+                try {
+                    $imagePath = $this->extractS3PathFromUrl($imageUrl);
+                    if ($imagePath) {
+                        // Use a simple timeout wrapper for S3 operations
+                        $this->deleteFromS3WithTimeout($imagePath, 10); // 10 second timeout
+                    }
+                } catch (\Exception $s3Error) {
+                    // Log S3 error but don't fail the request
+                    \Log::warning("Failed to delete S3 file: " . $s3Error->getMessage(), [
+                        'news_id' => $news->id,
+                        'image_path' => $imagePath
+                    ]);
                 }
             }
-
-            $news->delete();
 
             return response()->json(['message' => 'News deleted successfully']);
         } catch (\Exception $e) {
@@ -191,6 +205,28 @@ class NewsController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Delete file from S3 with timeout handling
+     */
+    private function deleteFromS3WithTimeout($path, $timeout = 10)
+    {
+        try {
+            // Set a shorter timeout for S3 operations
+            ini_set('default_socket_timeout', $timeout);
+            
+            if (Storage::disk('s3')->exists($path)) {
+                Storage::disk('s3')->delete($path);
+            }
+        } catch (\Exception $e) {
+            // Reset timeout and re-throw
+            ini_restore('default_socket_timeout');
+            throw $e;
+        }
+        
+        // Reset timeout
+        ini_restore('default_socket_timeout');
     }
 
     /**
