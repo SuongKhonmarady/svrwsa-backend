@@ -48,16 +48,73 @@ class GlobalActivityObserver
 
     protected function getLocation($ip)
     {
+        // If it's a local IP, try to get the real public IP
+        if (in_array($ip, ['127.0.0.1', '::1', 'localhost']) || 
+            preg_match('/^192\.168\./', $ip) || 
+            preg_match('/^10\./', $ip) || 
+            preg_match('/^172\.(1[6-9]|2[0-9]|3[0-1])\./', $ip)) {
+            
+            // Try to get real public IP for development testing
+            $realIp = $this->getRealPublicIP();
+            if ($realIp && $realIp !== $ip) {
+                return $this->getLocationByIP($realIp) . ' (via public IP: ' . $realIp . ')';
+            }
+            
+            return 'Local Network (' . $ip . ')';
+        }
+
+        return $this->getLocationByIP($ip);
+    }
+
+    protected function getRealPublicIP()
+    {
         try {
-            $response = @file_get_contents("http://ip-api.com/json/{$ip}?fields=city,country");
-            if ($response) {
-                $data = json_decode($response);
-                return ($data->city ?? '') . ', ' . ($data->country ?? '');
+            // Try multiple services to get public IP
+            $services = [
+                'https://api.ipify.org',
+                'https://icanhazip.com',
+                'https://ipecho.net/plain',
+                'https://myexternalip.com/raw'
+            ];
+
+            foreach ($services as $service) {
+                $ip = @file_get_contents($service, false, stream_context_create([
+                    'http' => ['timeout' => 3]
+                ]));
+                
+                if ($ip && filter_var(trim($ip), FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    return trim($ip);
+                }
             }
         } catch (\Exception $e) {
-            return null;
+            // Silently handle errors
         }
+        
         return null;
+    }
+
+    protected function getLocationByIP($ip)
+    {
+        try {
+            $response = @file_get_contents("http://ip-api.com/json/{$ip}?fields=city,country,status", false, stream_context_create([
+                'http' => ['timeout' => 5]
+            ]));
+            
+            if ($response) {
+                $data = json_decode($response);
+                if (isset($data->status) && $data->status === 'success') {
+                    $city = $data->city ?? '';
+                    $country = $data->country ?? '';
+                    if ($city || $country) {
+                        return trim($city . ', ' . $country, ', ');
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // Silently handle errors
+        }
+        
+        return 'Unknown Location';
     }
 }
 
