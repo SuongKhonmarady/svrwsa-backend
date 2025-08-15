@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Http\Requests\MonthlyReportRequest;
 
 class MonthlyReportController extends Controller
@@ -254,31 +255,48 @@ class MonthlyReportController extends Controller
     public function destroy($id): JsonResponse
     {
         try {
-            // Set longer execution time for S3 operations
-            set_time_limit(60);
-            
             $report = MonthlyReport::findOrFail($id);
             
-            // Delete from database first for faster user response
+            // Store info before deletion
             $fileUrl = $report->file_url;
-            $report->delete();
+            $reportTitle = $report->title ?? 'Untitled';
             
-            $s3DeleteStatus = 'no_file';
+            // Use database transaction for safer deletion
+            $deleteTime = microtime(true);
+            DB::transaction(function () use ($report) {
+                $report->delete();
+            }, 5); // 5 attempts with deadlock detection
+            $deleteTime = microtime(true) - $deleteTime;
             
-            // Try to delete from S3 with timeout handling
-            if ($fileUrl) {
+            // Log successful deletion
+            Log::info("Monthly report deleted successfully", [
+                'report_id' => $id,
+                'report_title' => $reportTitle,
+                'delete_time_ms' => round($deleteTime * 1000, 2),
+                'had_file' => !empty($fileUrl)
+            ]);
+            
+            $s3DeleteStatus = 'skipped';
+            $attemptS3Cleanup = env('ATTEMPT_S3_CLEANUP_ON_DELETE', false);
+            
+            // Try to delete from S3 with timeout handling (if enabled)
+            if ($attemptS3Cleanup && $fileUrl) {
                 try {
-                    // Use timeout wrapper for S3 operations
-                    $this->deleteReportFromS3WithTimeout($fileUrl, 10); // 10 second timeout
-                    $s3DeleteStatus = 'success';
+                    $this->deleteReportFromS3WithTimeout($fileUrl, 3); // 3 second timeout
+                    $s3DeleteStatus = 'completed';
                 } catch (\Exception $s3Error) {
-                    // Log S3 error but don't fail the request since DB record is already deleted
-                    Log::warning("Failed to delete S3 file during report deletion: " . $s3Error->getMessage(), [
+                    Log::warning("S3 cleanup failed but monthly report deleted successfully", [
                         'report_id' => $id,
-                        'file_url' => $fileUrl
+                        'file_url' => $fileUrl,
+                        'error' => $s3Error->getMessage()
                     ]);
                     $s3DeleteStatus = 'failed';
                 }
+            } else if ($fileUrl) {
+                Log::info("S3 file marked for manual cleanup", [
+                    'report_id' => $id,
+                    'file_url' => $fileUrl
+                ]);
             }
             
             $message = 'Monthly report deleted successfully';
@@ -289,12 +307,30 @@ class MonthlyReportController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $message,
+                'timing' => round($deleteTime * 1000, 2) . 'ms',
                 'details' => [
                     'report_deleted' => true,
                     'file_cleanup' => $s3DeleteStatus
                 ]
             ]);
+        } catch (\Illuminate\Database\QueryException $dbError) {
+            Log::error("Database error during monthly report deletion", [
+                'report_id' => $id,
+                'error' => $dbError->getMessage(),
+                'sql_state' => $dbError->errorInfo[0] ?? null
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Database operation failed'
+            ], 500);
+            
         } catch (\Exception $e) {
+            Log::error("Error deleting monthly report", [
+                'report_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'error' => 'Error deleting monthly report: ' . $e->getMessage()

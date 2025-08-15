@@ -15,7 +15,8 @@ class News extends Model
         'published_at' => 'date',
     ];
 
-    protected $with = ['category'];
+    // Remove automatic loading of category for faster inserts
+    // protected $with = ['category'];
 
     // Relationship with Category
     public function category()
@@ -41,7 +42,7 @@ class News extends Model
         });
     }
 
-    // Generate unique slug
+    // Generate unique slug - Optimized version
     public static function generateUniqueSlug($title, $ignoreId = null)
     {
         $slug = Str::slug($title);
@@ -51,17 +52,27 @@ class News extends Model
             $slug = 'news-' . time();
         }
         
-        $originalSlug = $slug;
-        $counter = 1;
-
-        while (static::where('slug', $slug)->when($ignoreId, function ($query, $ignoreId) {
-            return $query->where('id', '!=', $ignoreId);
-        })->exists()) {
-            $slug = $originalSlug . '-' . $counter;
-            $counter++;
+        // Get existing slugs in one query instead of multiple checks
+        $existingSlugs = static::where('slug', 'LIKE', $slug . '%')
+            ->when($ignoreId, function ($query, $ignoreId) {
+                return $query->where('id', '!=', $ignoreId);
+            })
+            ->pluck('slug')
+            ->toArray();
+        
+        // If no conflict, return original slug
+        if (!in_array($slug, $existingSlugs)) {
+            return $slug;
         }
+        
+        // Find the next available number
+        $counter = 1;
+        do {
+            $newSlug = $slug . '-' . $counter;
+            $counter++;
+        } while (in_array($newSlug, $existingSlugs));
 
-        return $slug;
+        return $newSlug;
     }
 
     // Route model binding by slug

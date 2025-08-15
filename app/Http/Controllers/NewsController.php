@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Models\News;
 
 class NewsController extends Controller
@@ -37,7 +38,8 @@ class NewsController extends Controller
      */
     public function index()
     {
-        return response()-> json(News::all());
+        $news = News::with('category')->get(); // Load category only when needed
+        return response()->json($news);
     }
 
     /**
@@ -53,41 +55,97 @@ class NewsController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'title' => 'required|string',
-            'content' => 'required|string',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png,gif,webp|max:5120', // 5MB max
-            'published_at' => 'nullable|date',
-            'featured' => 'boolean',
-            'category_id' => 'nullable|exists:categories,id',
-        ]);
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string',
+                'content' => 'required|string',
+                'image' => 'nullable|image|mimes:jpg,jpeg,png,gif,webp|max:5120', // 5MB max
+                'published_at' => 'nullable|date',
+                'featured' => 'boolean',
+                'category_id' => 'nullable|exists:categories,id',
+            ]);
 
-        // Handle image upload to S3
-        if ($request->hasFile('image')) {
-            try {
-                $image = $request->file('image');
-                $filename = 'news/' . time() . '_' . $image->getClientOriginalName();
-                
-                // Upload to S3
-                $path = Storage::disk('s3')->putFileAs('', $image, $filename);
-                
-                // Set public visibility
-                Storage::disk('s3')->setVisibility($path, 'public');
-                
-                // Get the full URL
-                $validated['image'] = Storage::disk('s3')->url($path);
-                
-            } catch (\Exception $e) {
-                return response()->json([
-                    'error' => 'Failed to upload image to S3',
-                    'message' => $e->getMessage()
-                ], 500);
+            $imageUploadStatus = 'no_image';
+            
+            // Handle image upload to local storage
+            if ($request->hasFile('image')) {
+                try {
+                    $uploadTime = microtime(true);
+                    
+                    $image = $request->file('image');
+                    $filename = time() . '_' . $image->getClientOriginalName();
+                    
+                    // Store in public/storage/news directory
+                    $path = $image->storeAs('news', $filename, 'public');
+                    $validated['image'] = Storage::disk('public')->url($path);
+                    
+                    $uploadTime = microtime(true) - $uploadTime;
+                    $imageUploadStatus = 'success';
+                    
+                    Log::info("Image uploaded to local storage", [
+                        'filename' => $filename,
+                        'path' => $path,
+                        'url' => $validated['image'],
+                        'upload_time_ms' => round($uploadTime * 1000, 2)
+                    ]);
+                    
+                } catch (\Exception $e) {
+                    Log::error("Local storage upload failed", [
+                        'error' => $e->getMessage(),
+                        'filename' => $filename ?? 'unknown'
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Failed to upload image',
+                        'message' => 'Image upload failed: ' . $e->getMessage()
+                    ], 500);
+                }
             }
+
+            // Create news record in database
+            $createTime = microtime(true);
+            $news = DB::transaction(function () use ($validated) {
+                return News::create($validated);
+            }, 5);
+            $createTime = microtime(true) - $createTime;
+
+            Log::info("News created successfully", [
+                'news_id' => $news->id,
+                'title' => $news->title,
+                'create_time_ms' => round($createTime * 1000, 2),
+                'image_status' => $imageUploadStatus
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'News created successfully',
+                'data' => $news->load('category'),
+                'details' => [
+                    'image_upload' => $imageUploadStatus,
+                    'create_time_ms' => round($createTime * 1000, 2)
+                ]
+            ], 201);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Validation failed',
+                'messages' => $e->errors()
+            ], 422);
+            
+        } catch (\Exception $e) {
+            Log::error("Unexpected error during news creation", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to create news',
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        $news = News::create($validated);
-
-        return response()->json($news, 201);
     }
 
     /**
@@ -95,7 +153,7 @@ class NewsController extends Controller
      */
     public function show(News $news)
     {
-        return response()->json($news);
+        return response()->json($news->load('category'));
     }
 
     /**
@@ -111,62 +169,138 @@ class NewsController extends Controller
      */
     public function update(Request $request, News $news)
     {
-        $validated = $request->validate([
-            'title' => 'required|string',
-            'content' => 'required|string',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png,gif,webp|max:5120', // 5MB max
-            'remove_image' => 'nullable|boolean',
-            'published_at' => 'nullable|date',
-            'featured' => 'boolean',
-            'category_id' => 'nullable|exists:categories,id',
-        ]);
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string',
+                'content' => 'required|string',
+                'image' => 'nullable|image|mimes:jpg,jpeg,png,gif,webp|max:5120', // 5MB max
+                'remove_image' => 'nullable|boolean',
+                'published_at' => 'nullable|date',
+                'featured' => 'boolean',
+                'category_id' => 'nullable|exists:categories,id',
+            ]);
 
-        // Handle image removal
-        if ($request->boolean('remove_image') && $news->image) {
-            try {
-                // Extract the file path from URL
-                $imagePath = $this->extractS3PathFromUrl($news->image);
-                if ($imagePath && Storage::disk('s3')->exists($imagePath)) {
-                    Storage::disk('s3')->delete($imagePath);
+            $imageUpdateStatus = 'no_change';
+            $oldImageUrl = $news->image;
+
+            // Handle image removal
+            if ($request->boolean('remove_image') && $news->image) {
+                try {
+                    // Delete old image from local storage if it exists
+                    $this->deleteLocalImage($news->image);
+                    
+                    Log::info("Image removed", [
+                        'news_id' => $news->id,
+                        'image_url' => $news->image
+                    ]);
+                    
+                    $validated['image'] = null;
+                    $imageUpdateStatus = 'removed';
+                } catch (\Exception $e) {
+                    Log::warning('Error handling image removal: ' . $e->getMessage());
                 }
-                $validated['image'] = null;
-            } catch (\Exception $e) {
-                // Log error but continue with update
-                \Log::warning('Failed to delete old image from S3: ' . $e->getMessage());
             }
-        }
 
-        // Handle new image upload
-        if ($request->hasFile('image')) {
-            try {
-                // Delete old image if exists
-                if ($news->image) {
-                    $oldImagePath = $this->extractS3PathFromUrl($news->image);
-                    if ($oldImagePath && Storage::disk('s3')->exists($oldImagePath)) {
-                        Storage::disk('s3')->delete($oldImagePath);
+            // Handle new image upload
+            if ($request->hasFile('image')) {
+                try {
+                    $uploadTime = microtime(true);
+                    
+                    $image = $request->file('image');
+                    $filename = time() . '_' . $image->getClientOriginalName();
+                    
+                    // Store in public/storage/news directory
+                    $path = $image->storeAs('news', $filename, 'public');
+                    $validated['image'] = Storage::disk('public')->url($path);
+                    
+                    $uploadTime = microtime(true) - $uploadTime;
+                    $imageUpdateStatus = 'updated';
+                    
+                    Log::info("Image updated successfully", [
+                        'news_id' => $news->id,
+                        'new_filename' => $filename,
+                        'path' => $path,
+                        'url' => $validated['image'],
+                        'upload_time_ms' => round($uploadTime * 1000, 2),
+                        'had_old_image' => !empty($oldImageUrl)
+                    ]);
+                    
+                    // Delete old image from local storage if it exists
+                    if ($oldImageUrl) {
+                        try {
+                            $this->deleteLocalImage($oldImageUrl);
+                            Log::info("Old image deleted from local storage", [
+                                'news_id' => $news->id,
+                                'old_image_url' => $oldImageUrl
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::warning("Failed to delete old image", [
+                                'news_id' => $news->id,
+                                'old_image_url' => $oldImageUrl,
+                                'error' => $e->getMessage()
+                            ]);
+                        }
                     }
+                    
+                } catch (\Exception $e) {
+                    Log::error("Local storage upload failed during news update", [
+                        'news_id' => $news->id,
+                        'error' => $e->getMessage(),
+                        'filename' => $filename ?? 'unknown'
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Failed to upload image',
+                        'message' => 'Image upload failed: ' . $e->getMessage()
+                    ], 500);
                 }
-
-                // Upload new image
-                $image = $request->file('image');
-                $filename = 'news/' . time() . '_' . $image->getClientOriginalName();
-                
-                $path = Storage::disk('s3')->putFileAs('', $image, $filename);
-                Storage::disk('s3')->setVisibility($path, 'public');
-                
-                $validated['image'] = Storage::disk('s3')->url($path);
-                
-            } catch (\Exception $e) {
-                return response()->json([
-                    'error' => 'Failed to upload image to S3',
-                    'message' => $e->getMessage()
-                ], 500);
             }
+
+            // Update news record in database
+            $updateTime = microtime(true);
+            DB::transaction(function () use ($news, $validated) {
+                $news->update($validated);
+            }, 5); // 5 attempts with deadlock detection
+            $updateTime = microtime(true) - $updateTime;
+
+            Log::info("News updated successfully", [
+                'news_id' => $news->id,
+                'title' => $news->title,
+                'update_time_ms' => round($updateTime * 1000, 2),
+                'image_status' => $imageUpdateStatus
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'News updated successfully',
+                'data' => $news->fresh()->load('category'), // Get fresh data from database with category
+                'details' => [
+                    'image_update' => $imageUpdateStatus,
+                    'update_time_ms' => round($updateTime * 1000, 2)
+                ]
+            ]);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Validation failed',
+                'messages' => $e->errors()
+            ], 422);
+            
+        } catch (\Exception $e) {
+            Log::error("Unexpected error during news update", [
+                'news_id' => $news->id ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to update news',
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        $news->update($validated);
-
-        return response()->json($news);
     }
 
     /**
@@ -175,40 +309,75 @@ class NewsController extends Controller
     public function destroy(News $news)
     {
         try {
-            // Delete record from database FIRST for immediate response
+            // Store info before deletion
             $imageUrl = $news->image;
             $newsId = $news->id;
-            $news->delete();
-
-            // Send immediate success response
-            $response = response()->json([
-                'success' => true,
-                'message' => 'News deleted successfully',
-                'details' => [
-                    'news_deleted' => true,
-                    'file_cleanup' => 'processing'
-                ]
+            
+            // Use database transaction for faster, safer deletion
+            $deleteTime = microtime(true);
+            DB::transaction(function () use ($news) {
+                $news->delete();
+            }, 5); // 5 attempts with deadlock detection
+            $deleteTime = microtime(true) - $deleteTime;
+            
+            // Log successful deletion
+            Log::info("News deleted successfully", [
+                'news_id' => $newsId,
+                'delete_time_ms' => round($deleteTime * 1000, 2),
+                'had_image' => !empty($imageUrl)
             ]);
 
-            // Try to cleanup S3 file after response (if possible)
+            // Delete image from local storage if it exists
+            $fileCleanupStatus = 'no_image';
             if ($imageUrl) {
                 try {
-                    $imagePath = $this->extractS3PathFromUrl($imageUrl);
-                    if ($imagePath) {
-                        // Very short timeout for S3 cleanup
-                        $this->deleteFromS3WithTimeout($imagePath, 5); // Only 5 seconds
-                    }
-                } catch (\Exception $s3Error) {
-                    // Log but don't affect response
-                    Log::warning("Failed to delete S3 file: " . $s3Error->getMessage(), [
+                    $this->deleteLocalImage($imageUrl);
+                    $fileCleanupStatus = 'completed';
+                    
+                    Log::info("Image deleted from local storage", [
                         'news_id' => $newsId,
-                        'image_path' => $imagePath ?? 'unknown'
+                        'image_url' => $imageUrl
                     ]);
+                } catch (\Exception $imageError) {
+                    Log::warning("Image cleanup failed but news deleted successfully", [
+                        'news_id' => $newsId,
+                        'image_url' => $imageUrl,
+                        'error' => $imageError->getMessage()
+                    ]);
+                    $fileCleanupStatus = 'failed';
                 }
             }
 
-            return $response;
+            return response()->json([
+                'success' => true,
+                'message' => 'News deleted successfully',
+                'timing' => round($deleteTime * 1000, 2) . 'ms',
+                'details' => [
+                    'news_deleted' => true,
+                    'file_cleanup' => $fileCleanupStatus
+                ]
+            ]);
+            
+        } catch (\Illuminate\Database\QueryException $dbError) {
+            Log::error("Database error during news deletion", [
+                'news_id' => $news->id ?? 'unknown',
+                'error' => $dbError->getMessage(),
+                'sql_state' => $dbError->errorInfo[0] ?? null
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Database operation failed',
+                'message' => 'Unable to delete news due to database error'
+            ], 500);
+            
         } catch (\Exception $e) {
+            Log::error("Unexpected error during news deletion", [
+                'news_id' => $news->id ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to delete news',
@@ -218,53 +387,50 @@ class NewsController extends Controller
     }
 
     /**
-     * Delete file from S3 with timeout handling
+     * Delete image from local storage
      */
-    private function deleteFromS3WithTimeout($path, $timeout = 10)
+    private function deleteLocalImage($imageUrl)
     {
+        if (!$imageUrl) {
+            return;
+        }
+
         try {
-            // Set a shorter timeout for S3 operations
-            ini_set('default_socket_timeout', $timeout);
+            // Extract the path from the URL
+            // URL format: http://domain.com/storage/news/filename.jpg
+            // We need to get: news/filename.jpg
+            $path = parse_url($imageUrl, PHP_URL_PATH);
             
-            if (Storage::disk('s3')->exists($path)) {
-                Storage::disk('s3')->delete($path);
+            if ($path) {
+                // Remove /storage/ prefix to get the relative path
+                $relativePath = str_replace('/storage/', '', $path);
+                
+                // Check if file exists and delete it
+                if (Storage::disk('public')->exists($relativePath)) {
+                    $deleted = Storage::disk('public')->delete($relativePath);
+                    
+                    Log::info("Local image deletion", [
+                        'original_url' => $imageUrl,
+                        'relative_path' => $relativePath,
+                        'deleted' => $deleted
+                    ]);
+                    
+                    return $deleted;
+                } else {
+                    Log::warning("Local image file not found for deletion", [
+                        'url' => $imageUrl,
+                        'path' => $relativePath
+                    ]);
+                }
             }
         } catch (\Exception $e) {
-            // Reset timeout and re-throw
-            ini_restore('default_socket_timeout');
+            Log::error("Failed to delete local image", [
+                'url' => $imageUrl,
+                'error' => $e->getMessage()
+            ]);
             throw $e;
         }
         
-        // Reset timeout
-        ini_restore('default_socket_timeout');
-    }
-
-    /**
-     * Extract S3 file path from full URL
-     */
-    private function extractS3PathFromUrl($url)
-    {
-        if (!$url) return null;
-        
-        $bucket = env('AWS_BUCKET');
-        $region = env('AWS_DEFAULT_REGION');
-        
-        // Handle different S3 URL formats
-        $patterns = [
-            // https://bucket-name.s3.region.amazonaws.com/path/to/file
-            "/https?:\/\/{$bucket}\.s3\.{$region}\.amazonaws\.com\/(.+)/",
-            // https://s3.region.amazonaws.com/bucket-name/path/to/file
-            "/https?:\/\/s3\.{$region}\.amazonaws\.com\/{$bucket}\/(.+)/",
-            // https://bucket-name.s3.amazonaws.com/path/to/file (legacy)
-            "/https?:\/\/{$bucket}\.s3\.amazonaws\.com\/(.+)/"
-        ];
-        
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $url, $matches)) {
-                return $matches[1];
-            }
-        }
-        
-        return null;
+        return false;
     }
 }
