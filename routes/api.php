@@ -12,6 +12,7 @@ use App\Http\Controllers\API\YearlyReportController;
 use App\Http\Controllers\API\ReportAnalyticsController;
 use App\Http\Controllers\API\ServiceRequestController;
 use App\Http\Controllers\API\SearchController;
+use App\Http\Controllers\API\DashboardController;
 
 Route::get('/test', function () {
     return response()->json(['message' => 'API test route works!']);
@@ -103,6 +104,13 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         Route::get('/admin/service-requests/{id}', [ServiceRequestController::class, 'adminShow']);
         Route::get('/admin/service-requests/{id}/documents/{type}/{filename}', [ServiceRequestController::class, 'serveDocument']);
 
+        // Dashboard routes (admin only)
+        Route::prefix('admin/dashboard')->group(function () {
+            Route::get('/stats', [DashboardController::class, 'stats']);
+            Route::get('/customer-growth/{year?}', [DashboardController::class, 'customerGrowthData']);
+            Route::get('/recent-news', [DashboardController::class, 'recentNews']);
+            Route::get('/recent-reports', [DashboardController::class, 'recentReports']);
+        });
 
         // Report management (CRUD operations)
         Route::prefix('reports/admin')->group(function () {
