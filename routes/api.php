@@ -72,7 +72,8 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         // All Reports (including drafts) - for authenticated staff
         Route::get('/monthly/all', [MonthlyReportController::class, 'indexAll']); // Including drafts
         Route::get('/yearly/all', [YearlyReportController::class, 'indexAll']); // Including drafts
-        
+        Route::get('/monthly/{id}', [MonthlyReportController::class, 'showById']); // Including drafts
+
         // Publishing controls (staff can publish/unpublish)
         Route::post('/monthly/{id}/publish', [MonthlyReportController::class, 'publish']);
         Route::post('/monthly/{id}/unpublish', [MonthlyReportController::class, 'unpublish']);

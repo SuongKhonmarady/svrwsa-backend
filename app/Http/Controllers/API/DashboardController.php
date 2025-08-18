@@ -27,13 +27,22 @@ class DashboardController extends Controller
             'total_news' => News::count(),
             'published_news' => News::whereNotNull('published_at')->count(),
             'total_service_requests' => ServiceRequest::count(),
+            'completed_service_requests' => ServiceRequest::whereHas('status', function($query) {
+                $query->where('name', 'Completed');
+            })->count(),
             'pending_service_requests' => ServiceRequest::whereHas('status', function($query) {
                 $query->where('name', 'Pending');
             })->count(),
+            'inProgress_service_requests' => ServiceRequest::whereHas('status', function($query) {
+                $query->where('name', 'In Progress');
+            })->count(),
+            'rejected_service_requests' => ServiceRequest::whereHas('status', function($query) {
+                $query->where('name', 'Rejected');
+            })->count(),
             'total_monthly_reports' => MonthlyReport::count(),
-            'published_monthly_reports' => MonthlyReport::whereNotNull('published_at')->count(),
+            'published_monthly_reports' => MonthlyReport::where('status', 'published')->count(),
             'total_yearly_reports' => YearlyReport::count(),
-            'published_yearly_reports' => YearlyReport::whereNotNull('published_at')->count(),
+            'published_yearly_reports' => YearlyReport::where('status', 'published')->count(),
             'recent_service_requests' => ServiceRequest::where('created_at', '>=', Carbon::now()->subDays(7))->count(),
             'recent_news' => News::where('created_at', '>=', Carbon::now()->subDays(7))->count(),
         ];            return response()->json([
@@ -64,6 +73,7 @@ class DashboardController extends Controller
                 DB::raw('MONTHNAME(created_at) as month_name')
             )
             ->whereYear('created_at', $year)
+            ->where('status_id', 11) // Assuming 11 is the ID for "Completed" status
             ->groupBy(DB::raw('MONTH(created_at)'), DB::raw('MONTHNAME(created_at)'))
             ->orderBy(DB::raw('MONTH(created_at)'))
             ->get();

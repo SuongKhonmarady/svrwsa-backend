@@ -106,6 +106,26 @@ class MonthlyReportController extends Controller
             ], 500);
         }
     }
+    
+    public function showById($id): JsonResponse
+    {
+        try {
+            $report = MonthlyReport::with(['year', 'month'])
+                ->whereIn('status', ['published', 'draft']) //show published and draft reports for admin access
+                ->findOrFail($id);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $report,
+                'message' => 'Monthly report retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving monthly report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
      * Store a new monthly report
