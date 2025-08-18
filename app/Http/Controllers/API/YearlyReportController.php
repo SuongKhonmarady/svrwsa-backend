@@ -204,6 +204,29 @@ class YearlyReportController extends Controller
         }
     }
 
+    public function adminShow($id): JsonResponse
+    {
+        try {
+            $report = YearlyReport::with(['year'])
+                ->whereIn('status', ['published', 'draft']) // published and draft reports for admin access
+                ->findOrFail($id);
+            
+            // Add monthly reports completion status
+            $report->monthly_completion = $report->getMonthlyCompletionStatus();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $report,
+                'message' => 'Yearly report retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving yearly report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     /**
      * Update a yearly report
      */

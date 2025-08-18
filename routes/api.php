@@ -73,6 +73,7 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         Route::get('/monthly/all', [MonthlyReportController::class, 'indexAll']); // Including drafts
         Route::get('/yearly/all', [YearlyReportController::class, 'indexAll']); // Including drafts
         Route::get('/monthly/{id}', [MonthlyReportController::class, 'showById']); // Including drafts
+        Route::get('/yearly/{id}', [YearlyReportController::class, 'adminShow']); // Including drafts
 
         // Publishing controls (staff can publish/unpublish)
         Route::post('/monthly/{id}/publish', [MonthlyReportController::class, 'publish']);
