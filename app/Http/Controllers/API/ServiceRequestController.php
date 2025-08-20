@@ -49,7 +49,7 @@ class ServiceRequestController extends Controller
                     $extension = $file->getClientOriginalExtension();
                     $fileName = $side.'.'.$extension;
                     // Store in private S3 storage using dedicated private disk
-                    $path = $file->storeAs("id_docs/{$requestId}", $fileName, 's3-private');
+                    $path = $file->storeAs("service_requests/{$requestId}/id_card", $fileName, 's3-private');
                     $idCardPaths[] = $path; // Store the private path, not public URL
                 }
             }
@@ -61,7 +61,7 @@ class ServiceRequestController extends Controller
                     $extension = $file->getClientOriginalExtension();
                     $fileName = 'page'.($index + 1).'.'.$extension;
                     // Store in private S3 storage using dedicated private disk
-                    $path = $file->storeAs("family_books/{$requestId}", $fileName, 's3-private');
+                    $path = $file->storeAs("service_requests/{$requestId}/family_books", $fileName, 's3-private');
                     $familyBookPaths[] = $path; // Store the private path, not public URL
                 }
             }
@@ -176,18 +176,26 @@ class ServiceRequestController extends Controller
                 abort(404, 'Invalid document type');
             }
 
-            // Map type to actual folder names in S3 storage
-            $folderMap = [
-                'id_card' => 'id_docs',
-                'family_book' => 'family_books',
-            ];
-
-            $folderName = $folderMap[$type];
-            $filePath = "{$folderName}/{$id}/{$filename}";
-
-            // Check if file exists in private S3
-            if (! Storage::disk('s3-private')->exists($filePath)) {
-                abort(404, 'Document not found');
+            // Try new path structure first
+            $storageType = $type === 'family_book' ? 'family_books' : $type;
+            $newFilePath = "service_requests/{$id}/{$storageType}/{$filename}";
+            
+            // Check if file exists in new structure
+            if (Storage::disk('s3-private')->exists($newFilePath)) {
+                $filePath = $newFilePath;
+            } else {
+                // Fall back to old structure for backward compatibility
+                $oldFolderMap = [
+                    'id_card' => 'id_docs',
+                    'family_book' => 'family_books',
+                ];
+                $oldFolderName = $oldFolderMap[$type];
+                $filePath = "{$oldFolderName}/{$id}/{$filename}";
+                
+                // Check if file exists in old structure
+                if (!Storage::disk('s3-private')->exists($filePath)) {
+                    abort(404, 'Document not found');
+                }
             }
 
             // Get the file from private S3
