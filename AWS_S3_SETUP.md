@@ -92,16 +92,53 @@ yearly_reports/
     └── annual_report_2025.pdf
 ```
 
+### News Images
+```
+news/
+├── 1640995200_example_image.jpg
+├── 1640995201_another_image.png
+└── test/
+    └── (test files for verification)
+```
+
+### Service Request Documents (Private)
+```
+private/
+├── id_docs/
+│   ├── 1/
+│   │   ├── front.jpg
+│   │   └── back.jpg
+│   └── 2/
+│       ├── front.png
+│       └── back.png
+└── family_books/
+    ├── 1/
+    │   ├── page1.jpg
+    │   └── page2.jpg
+    └── 2/
+        ├── page1.png
+        ├── page2.png
+        └── page3.png
+```
+
 ## Features
 
 ### Automatic File Management
-- Files are automatically uploaded to S3 when creating/updating reports
-- Old files are automatically deleted when new ones are uploaded
-- Files are deleted from S3 when reports are deleted
+- Files are automatically uploaded to S3 when creating/updating reports or news
+- News images are stored in the `news/` directory with timestamp-based filenames
+- Service request documents (ID cards, family books) are stored in private directories
+- Old images are automatically deleted when new ones are uploaded
+- Files are deleted from S3 when reports, news, or service requests are deleted
 
 ### File URL Generation
-- Public URLs are automatically generated for uploaded files
+- Public URLs are automatically generated for uploaded files (news images)
+- Service request documents remain private and are served through secure admin-only endpoints
 - URLs are stored in the database for easy access
+
+### Security
+- News images are publicly accessible via S3 URLs
+- Service request documents are stored privately and only accessible to authenticated admin users
+- Document access is controlled through secure admin-only API endpoints
 
 ### Error Handling
 - Upload failures are properly handled
@@ -121,11 +158,29 @@ If you're migrating from local storage to S3:
 
 To test the S3 integration:
 
+### Reports
 1. Create a new monthly or yearly report with a file
 2. Verify the file appears in your S3 bucket
 3. Check that the file URL in the database points to S3
 4. Update the report with a new file and verify the old file is deleted
 5. Delete the report and verify the file is removed from S3
+
+### News Images
+1. Test S3 connection: `GET /api/test-s3-connection`
+2. Test S3 image upload: `GET /api/test-s3-image-upload`
+3. Create a news article with an image
+4. Verify the image appears in your S3 bucket under `news/` directory
+5. Update the news with a new image and verify the old image is deleted
+6. Delete the news and verify the image is removed from S3
+
+### Service Request Documents
+1. Test S3 document upload: `GET /api/test-s3-document-upload` (admin only)
+2. Submit a service request with ID card and family book documents
+3. Verify the documents appear in your S3 bucket under `private/` directories
+4. Access documents through admin panel - they should load securely
+5. Delete a service request and verify the documents are removed from S3
+
+Note: Service request documents are stored privately and only accessible through admin authentication.
 
 ## Troubleshooting
 
