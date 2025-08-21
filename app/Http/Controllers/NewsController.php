@@ -70,11 +70,98 @@ class NewsController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $news = News::with('category')->get(); // Load category only when needed
+        try {
+            $query = News::with('category');
 
-        return response()->json($news);
+            // Filter by category name if provided
+            if ($request->has('category') && !empty($request->category)) {
+                $categoryName = trim($request->category);
+                $query->whereHas('category', function ($q) use ($categoryName) {
+                    $q->where('name', 'LIKE', '%' . $categoryName . '%');
+                });
+            }
+
+            $news = $query->orderBy('created_at', 'desc')->get();
+
+            // Transform the data to make category information more prominent
+            $transformedNews = $news->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'content' => $item->content,
+                    'image' => $item->image,
+                    'published_at' => $item->published_at,
+                    'featured' => $item->featured,
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                    'category' => $item->category ? [
+                        'id' => $item->category->id,
+                        'name' => $item->category->name,
+                        'slug' => $item->category->name // Using name as slug for consistency
+                    ] : null,
+                    'category_id' => $item->category_id
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $transformedNews,
+                'filters' => [
+                    'category' => $request->get('category'),
+                    'total_count' => $news->count(),
+                    'applied_filters' => $request->only(['category'])
+                ],
+                'category_info' => $request->has('category') ? [
+                    'filtered_by' => $request->get('category'),
+                    'category_details' => $news->first()?->category
+                ] : null,
+                'message' => $request->has('category') 
+                    ? "News filtered by category: {$request->category}" 
+                    : 'All news retrieved successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving news: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get available categories for filtering
+     */
+    public function categories()
+    {
+        try {
+            $categories = \App\Models\Category::select('id', 'name')
+                ->withCount('news')
+                ->orderBy('name')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $categories->map(function ($category) {
+                    return [
+                        'id' => $category->id,
+                        'name' => $category->name,
+                        'news_count' => $category->news_count,
+                        'slug' => $category->name // Using name as slug for consistency
+                    ];
+                }),
+                'total_categories' => $categories->count(),
+                'total_news' => $categories->sum('news_count'),
+                'message' => 'Available categories retrieved successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving categories: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

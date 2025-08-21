@@ -136,6 +136,7 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
 });
 
 // Public news routes
+Route::get('/news/categories', [NewsController::class, 'categories']);
 Route::get('/news/{news}', [NewsController::class, 'show']);
 Route::get('/news', [NewsController::class, 'index']);
 
