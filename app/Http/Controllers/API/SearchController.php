@@ -83,7 +83,7 @@ class SearchController extends Controller
         ];
         
         // Search News - Enhanced multi-word search
-        $news = News::select(['id', 'title', 'content', 'created_at', 'updated_at'])
+        $news = News::select(['id', 'title', 'content', 'slug', 'created_at', 'updated_at'])
                     ->where(function($q) use ($query) {
                         // Split query into words for better matching
                         $words = array_filter(explode(' ', trim($query)));
@@ -113,6 +113,7 @@ class SearchController extends Controller
                     'id' => $item->id,
                     'title' => $item->title,
                     'content' => $item->content ?? '',
+                    'slug' => $item->slug,
                     'type' => 'news',
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
@@ -226,7 +227,7 @@ class SearchController extends Controller
         
         // News search (no relationships needed)
         $newsResults = \DB::table('news')
-            ->select(['id', 'title', 'content', 'created_at', 'updated_at'])
+            ->select(['id', 'title', 'content', 'slug', 'created_at', 'updated_at'])
             ->where(function($q) use ($escapedQuery) {
                 $q->where('title', 'LIKE', $escapedQuery)
                 ->orWhere('content', 'LIKE', $escapedQuery);
@@ -239,6 +240,7 @@ class SearchController extends Controller
                     'id' => $item->id,
                     'title' => $item->title,
                     'content' => $item->content ?? '',
+                    'slug' => $item->slug,
                     'type' => 'news',
                     'created_at' => $item->created_at,
                     'updated_at' => $item->updated_at,
