@@ -5,6 +5,7 @@ use App\Http\Controllers\API\MonthController;
 use App\Http\Controllers\API\MonthlyReportController;
 use App\Http\Controllers\API\ReportAnalyticsController;
 use App\Http\Controllers\API\SearchController;
+use App\Http\Controllers\API\ServiceCategoryController;
 use App\Http\Controllers\API\ServiceRequestController;
 use App\Http\Controllers\API\YearController;
 use App\Http\Controllers\API\YearlyReportController;
@@ -151,6 +152,10 @@ Route::get('/statuses', fn () => \App\Models\Status::all());
 // Public service request routes
 // Route::get('/service-requests', [ServiceRequestController::class, 'index']);
 Route::post('/service-requests', [ServiceRequestController::class, 'store']);
+
+// Public service categories routes
+Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
+Route::get('/service-categories/{type}', [ServiceCategoryController::class, 'show']);
 
 // Public search routes
 Route::get('/search', [SearchController::class, 'globalSearch']);

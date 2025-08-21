@@ -16,7 +16,14 @@ class ServiceRequestController extends Controller
      */
     public function index()
     {
-        $serviceRequests = ServiceRequest::with('status')->get();
+        $serviceRequests = ServiceRequest::with([
+            'status',
+            'commune', 
+            'district',
+            'province',
+            'occupation',
+            'usageType'
+        ])->get();
 
         // Hide sensitive documents from non-admin users
         $serviceRequests->transform(function ($request) {
@@ -72,8 +79,15 @@ class ServiceRequestController extends Controller
                 'family_book' => $familyBookPaths,
             ]);
 
-            // Load the status relationship
-            $serviceRequest->load('status');
+            // Load all relationships
+            $serviceRequest->load([
+                'status',
+                'commune',
+                'district', 
+                'province',
+                'occupation',
+                'usageType'
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -94,7 +108,14 @@ class ServiceRequestController extends Controller
     public function show($id)
     {
         try {
-            $serviceRequest = ServiceRequest::with('status')->findOrFail($id);
+            $serviceRequest = ServiceRequest::with([
+                'status',
+                'commune',
+                'district',
+                'province',
+                'occupation',
+                'usageType'
+            ])->findOrFail($id);
 
             // Hide sensitive documents from non-admin users
             $serviceRequest->makeHidden(['id_card', 'family_book']);
@@ -136,7 +157,14 @@ class ServiceRequestController extends Controller
      */
     public function adminIndex()
     {
-        $serviceRequests = ServiceRequest::with('status')->get();
+        $serviceRequests = ServiceRequest::with([
+            'status',
+            'commune',
+            'district',
+            'province',
+            'occupation',
+            'usageType'
+        ])->get();
 
         return response()->json(['success' => true, 'data' => $serviceRequests]);
     }
@@ -147,7 +175,14 @@ class ServiceRequestController extends Controller
     public function adminShow($id)
     {
         try {
-            $serviceRequest = ServiceRequest::with('status')->findOrFail($id);
+            $serviceRequest = ServiceRequest::with([
+                'status',
+                'commune',
+                'district',
+                'province',
+                'occupation',
+                'usageType'
+            ])->findOrFail($id);
 
             return response()->json([
                 'success' => true,

@@ -21,11 +21,19 @@ class ServiceRequestFormRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'email' => 'nullable|email',
             'phone' => 'nullable|string|max:20',
-            'address' => 'nullable|string|max:500',
             'service_type' => 'required|string|max:255',
             'details' => 'nullable|string|max:2000',
+            
+            // New required fields
+            'family_members' => 'required|integer|min:1',
+            'female_members' => 'required|integer|min:0',
+            'village' => 'required|string|max:255',
+            'commune_id' => 'required|exists:communes,id',
+            'district_id' => 'required|exists:districts,id',
+            'province_id' => 'required|exists:provinces,id',
+            'occupation_id' => 'required|exists:occupations,id',
+            'usage_type_id' => 'required|exists:usage_types,id',
             
             // Document upload validation
             'id_card' => 'required|array|size:2',
