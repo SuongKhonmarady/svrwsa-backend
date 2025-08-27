@@ -105,6 +105,7 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         Route::patch('/service-requests/{id}/status', [ServiceRequestController::class, 'updateStatus']);
         Route::delete('/admin/service-requests/{id}', [ServiceRequestController::class, 'destroy']);
         Route::get('/admin/service-requests', [ServiceRequestController::class, 'adminIndex']);
+        Route::get('/admin/service-requests/by-status', [ServiceRequestController::class, 'adminGetByStatus']);
         Route::get('/admin/service-requests/{id}', [ServiceRequestController::class, 'adminShow']);
         Route::get('/admin/service-requests/{id}/documents/{type}/{filename}', [ServiceRequestController::class, 'serveDocument']);
         Route::get('/test-s3-document-upload', [ServiceRequestController::class, 'testS3DocumentUpload']);

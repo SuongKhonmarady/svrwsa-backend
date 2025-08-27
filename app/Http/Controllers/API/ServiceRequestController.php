@@ -103,6 +103,49 @@ class ServiceRequestController extends Controller
     }
 
     /**
+     * Admin only: Display service requests filtered by status with documents.
+     */
+    public function adminGetByStatus(Request $request)
+    {
+        $request->validate([
+            'status' => 'nullable|string|in:Pending,In Progress,Completed,Rejected',
+        ]);
+
+        $statusName = $request->status;
+        
+        if ($statusName) {
+            // Filter by specific status
+            $serviceRequests = ServiceRequest::whereHas('status', function ($query) use ($statusName) {
+                $query->where('name', $statusName);
+            })->with([
+                'status',
+                'commune',
+                'district',
+                'province',
+                'occupation',
+                'usageType'
+            ])->get();
+        } else {
+            // Return all service requests
+            $serviceRequests = ServiceRequest::with([
+                'status',
+                'commune',
+                'district',
+                'province',
+                'occupation',
+                'usageType'
+            ])->get();
+        }
+
+        return response()->json([
+            'success' => true, 
+            'data' => $serviceRequests,
+            'status' => $statusName ?: 'All',
+            'count' => $serviceRequests->count()
+        ]);
+    }
+
+    /**
      * Display the specified service request with documents.
      */
     public function show($id)

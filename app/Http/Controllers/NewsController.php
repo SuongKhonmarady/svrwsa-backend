@@ -90,7 +90,7 @@ class NewsController extends Controller
                 return [
                     'id' => $item->id,
                     'title' => $item->title,
-                    'slug' => $item->slug, // Include the news slug
+                    'slug' => $item->slug,
                     'content' => $item->content,
                     'image' => $item->image,
                     'published_at' => $item->published_at,
