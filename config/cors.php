@@ -28,7 +28,7 @@ return [
         'http://127.0.0.1:5173',
         'http://127.0.0.1:8000',
         'http://127.0.0.1:8080',
-        env('FRONTEND_URL', 'http://localhost:3000'),
+        env('FRONTEND_URL', 'https://svrwu.vercel.app'),
         'https://svrwu.vercel.app',
     ],
 
