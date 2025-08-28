@@ -29,7 +29,7 @@ return [
         'http://127.0.0.1:8000',
         'http://127.0.0.1:8080',
         env('FRONTEND_URL', 'http://localhost:3000'),
-        'http://192.168.0.135:5173',
+        'https://svrwu.vercel.app/',
     ],
 
     'allowed_origins_patterns' => [],
