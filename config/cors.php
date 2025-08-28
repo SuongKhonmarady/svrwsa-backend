@@ -30,6 +30,7 @@ return [
         'http://127.0.0.1:8080',
         env('FRONTEND_URL', 'https://svrwu.vercel.app'),
         'https://svrwu.vercel.app',
+        'https://api-scholar.site'
     ],
 
     'allowed_origins_patterns' => [],
