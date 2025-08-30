@@ -37,10 +37,10 @@ class ServiceRequestFormRequest extends FormRequest
             
             // Document upload validation
             'id_card' => 'required|array|size:2',
-            'id_card.*' => 'file|mimes:jpg,jpeg,png|max:2048',
+            'id_card.*' => 'file|mimes:jpg,jpeg,png|max:5120',
             
             'family_book' => 'required|array|min:1',
-            'family_book.*' => 'file|mimes:jpg,jpeg,png,pdf|max:2048',
+            'family_book.*' => 'file|mimes:jpg,jpeg,png,pdf|max:5120',
         ];
     }
 
