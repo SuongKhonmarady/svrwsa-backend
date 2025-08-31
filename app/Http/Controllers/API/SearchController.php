@@ -124,6 +124,7 @@ class SearchController extends Controller
         // Search Monthly Reports with relationships - Enhanced multi-word search
         $monthlyReports = MonthlyReport::with(['month', 'year'])  // Eager load relationships
                                     ->select(['id', 'title', 'description', 'month_id', 'year_id', 'created_at', 'updated_at'])
+                                    ->where('status', 'published')  // Only include published reports
                                     ->where(function($q) use ($query) {
                                         // Split query into words for better matching
                                         $words = array_filter(explode(' ', trim($query)));
@@ -175,6 +176,7 @@ class SearchController extends Controller
         // Search Yearly Reports with relationships - Enhanced multi-word search
         $yearlyReports = YearlyReport::with(['year'])  // Eager load year relationship
                                     ->select(['id', 'title', 'description', 'year_id', 'created_at', 'updated_at'])
+                                    ->where('status', 'published')  // Only include published reports
                                     ->where(function($q) use ($query) {
                                         // Split query into words for better matching
                                         $words = array_filter(explode(' ', trim($query)));
@@ -256,6 +258,7 @@ class SearchController extends Controller
                 'm.id as month_id', 'm.month as month_name', 'm.created_at as month_created_at', 'm.updated_at as month_updated_at',
                 'y.id as year_id', 'y.year_value', 'y.created_at as year_created_at', 'y.updated_at as year_updated_at'
             ])
+            ->where('mr.status', 'published')  // Only include published reports
             ->where(function($q) use ($escapedQuery) {
                 $q->where('mr.title', 'LIKE', $escapedQuery)
                 ->orWhere('mr.description', 'LIKE', $escapedQuery);
@@ -293,6 +296,7 @@ class SearchController extends Controller
                 'yr.id', 'yr.title', 'yr.description', 'yr.created_at', 'yr.updated_at',
                 'y.id as year_id', 'y.year_value', 'y.created_at as year_created_at', 'y.updated_at as year_updated_at'
             ])
+            ->where('yr.status', 'published')  // Only include published reports
             ->where(function($q) use ($escapedQuery) {
                 $q->where('yr.title', 'LIKE', $escapedQuery)
                 ->orWhere('yr.description', 'LIKE', $escapedQuery);
@@ -448,8 +452,11 @@ class SearchController extends Controller
     private function searchMonthlyReports(string $query, int $limit): array
     {
         // Assuming you have a MonthlyReport model
-        $monthlyReports = MonthlyReport::where('title', 'LIKE', "%{$query}%")
-                                    ->orWhere('description', 'LIKE', "%{$query}%")
+        $monthlyReports = MonthlyReport::where('status', 'published')  // Only include published reports
+                                    ->where(function($q) use ($query) {
+                                        $q->where('title', 'LIKE', "%{$query}%")
+                                          ->orWhere('description', 'LIKE', "%{$query}%");
+                                    })
                                     ->limit($limit)
                                     ->get();
 
@@ -471,8 +478,11 @@ class SearchController extends Controller
     private function searchYearlyReports(string $query, int $limit): array
     {
         // Assuming you have a YearlyReport model
-        $yearlyReports = YearlyReport::where('title', 'LIKE', "%{$query}%")
-                                    ->orWhere('description', 'LIKE', "%{$query}%")
+        $yearlyReports = YearlyReport::where('status', 'published')  // Only include published reports
+                                    ->where(function($q) use ($query) {
+                                        $q->where('title', 'LIKE', "%{$query}%")
+                                          ->orWhere('description', 'LIKE', "%{$query}%");
+                                    })
                                     ->limit($limit)
                                     ->get();
 
