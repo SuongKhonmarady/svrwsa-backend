@@ -20,7 +20,7 @@ Route::get('/test', function () {
 });
 
 // Public authentication routes (no CSRF for API)
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1'); // 5 login attempts per minute
 
 // PUBLIC REPORT ROUTES (No Authentication Required)
 // These routes are for public access to published reports
@@ -153,7 +153,7 @@ Route::get('/statuses', fn () => \App\Models\Status::all());
 
 // Public service request routes
 // Route::get('/service-requests', [ServiceRequestController::class, 'index']);
-Route::post('/service-requests', [ServiceRequestController::class, 'store']);
+Route::post('/service-requests', [ServiceRequestController::class, 'store'])->middleware('throttle:3,1'); // 3 requests per minute
 
 // Public service categories routes
 Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
