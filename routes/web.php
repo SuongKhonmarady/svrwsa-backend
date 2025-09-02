@@ -12,7 +12,7 @@ Route::get('/health', function () {
         'status' => 'healthy',
         'timestamp' => now()->toISOString()
     ]);
-});
+})->middleware('throttle:10,1'); // 10 requests per minute
 
 // CSRF cookie route for SPA authentication
 Route::get('/sanctum/csrf-cookie', [\Laravel\Sanctum\Http\Controllers\CsrfCookieController::class, 'show']);

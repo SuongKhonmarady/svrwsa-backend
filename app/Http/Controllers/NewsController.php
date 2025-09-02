@@ -11,63 +11,6 @@ use Illuminate\Support\Facades\Storage;
 class NewsController extends Controller
 {
     /**
-     * Test S3 connection
-     */
-    public function testS3Connection()
-    {
-        try {
-            // Test if we can list bucket contents
-            $exists = Storage::disk('s3')->exists('');
-
-            return response()->json([
-                'success' => true,
-                'message' => 'S3 connection successful',
-                'bucket' => env('AWS_BUCKET'),
-                'region' => env('AWS_DEFAULT_REGION'),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'S3 connection failed',
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Test S3 image upload
-     */
-    public function testS3ImageUpload()
-    {
-        try {
-            // Create a test image content
-            $testContent = 'This is a test file for S3 upload';
-            $filename = 'test_image_'.time().'.txt';
-
-            // Upload test file to S3
-            $path = Storage::disk('s3')->put('news/test/'.$filename, $testContent);
-            $url = Storage::disk('s3')->url('news/test/'.$filename);
-
-            // Delete the test file
-            Storage::disk('s3')->delete('news/test/'.$filename);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'S3 image upload test successful',
-                'test_path' => $path,
-                'test_url' => $url,
-                'bucket' => env('AWS_BUCKET'),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'S3 image upload test failed',
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
      * Display a listing of the resource.
      */
     public function index(Request $request)

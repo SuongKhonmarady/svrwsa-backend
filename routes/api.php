@@ -141,10 +141,6 @@ Route::get('/news/categories', [NewsController::class, 'categories']);
 Route::get('/news/{news}', [NewsController::class, 'show']);
 Route::get('/news', [NewsController::class, 'index']);
 
-// Test routes for S3 functionality
-Route::get('/test-s3-connection', [NewsController::class, 'testS3Connection']);
-Route::get('/test-s3-image-upload', [NewsController::class, 'testS3ImageUpload']);
-
 // Public categories routes
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
