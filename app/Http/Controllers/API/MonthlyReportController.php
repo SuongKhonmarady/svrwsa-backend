@@ -198,18 +198,24 @@ class MonthlyReportController extends Controller
     {
         try {
             $report = MonthlyReport::with(['year', 'month'])
-                ->where('status', 'published') // Only published reports for public access
-                ->findOrFail($id);
-            
+                ->where('status', 'published')
+                ->where('id', $id)
+                ->firstOrFail();
+    
             return response()->json([
                 'success' => true,
                 'data' => $report,
                 'message' => 'Monthly report retrieved successfully'
             ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Monthly report not found.'
+            ], 404);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error retrieving monthly report: ' . $e->getMessage()
+                'message' => 'Something went wrong. Please try again later.'
             ], 500);
         }
     }
