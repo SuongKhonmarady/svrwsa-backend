@@ -193,8 +193,6 @@ class NewsController extends Controller
             // Handle image upload to S3 storage
             if ($request->hasFile('image')) {
                 try {
-                    $uploadTime = microtime(true);
-
                     $image = $request->file('image');
                     $filename = time().'_'.$image->getClientOriginalName();
 
@@ -202,15 +200,7 @@ class NewsController extends Controller
                     $path = $image->storeAs('news', $filename, 's3');
                     $validated['image'] = Storage::disk('s3')->url($path);
 
-                    $uploadTime = microtime(true) - $uploadTime;
                     $imageUploadStatus = 'success';
-
-                    Log::info('Image uploaded to S3 storage', [
-                        'filename' => $filename,
-                        'path' => $path,
-                        'url' => $validated['image'],
-                        'upload_time_ms' => round($uploadTime * 1000, 2),
-                    ]);
 
                 } catch (\Exception $e) {
                     Log::error('S3 storage upload failed', [
@@ -227,18 +217,9 @@ class NewsController extends Controller
             }
 
             // Create news record in database
-            $createTime = microtime(true);
             $news = DB::transaction(function () use ($validated) {
                 return News::create($validated);
             }, 5);
-            $createTime = microtime(true) - $createTime;
-
-            Log::info('News created successfully', [
-                'news_id' => $news->id,
-                'title' => $news->title,
-                'create_time_ms' => round($createTime * 1000, 2),
-                'image_status' => $imageUploadStatus,
-            ]);
 
             return response()->json([
                 'success' => true,
@@ -246,7 +227,6 @@ class NewsController extends Controller
                 'data' => $news->load('category'),
                 'details' => [
                     'image_upload' => $imageUploadStatus,
-                    'create_time_ms' => round($createTime * 1000, 2),
                 ],
             ], 201);
 
@@ -312,23 +292,16 @@ class NewsController extends Controller
                     // Delete old image from S3 storage if it exists
                     $this->deleteS3Image($news->image);
 
-                    Log::info('Image removed', [
-                        'news_id' => $news->id,
-                        'image_url' => $news->image,
-                    ]);
-
                     $validated['image'] = null;
                     $imageUpdateStatus = 'removed';
                 } catch (\Exception $e) {
-                    Log::warning('Error handling image removal: '.$e->getMessage());
+                    // Continue with update even if image removal fails
                 }
             }
 
             // Handle new image upload
             if ($request->hasFile('image')) {
                 try {
-                    $uploadTime = microtime(true);
-
                     $image = $request->file('image');
                     $filename = time().'_'.$image->getClientOriginalName();
 
@@ -336,32 +309,14 @@ class NewsController extends Controller
                     $path = $image->storeAs('news', $filename, 's3');
                     $validated['image'] = Storage::disk('s3')->url($path);
 
-                    $uploadTime = microtime(true) - $uploadTime;
                     $imageUpdateStatus = 'updated';
-
-                    Log::info('Image updated successfully', [
-                        'news_id' => $news->id,
-                        'new_filename' => $filename,
-                        'path' => $path,
-                        'url' => $validated['image'],
-                        'upload_time_ms' => round($uploadTime * 1000, 2),
-                        'had_old_image' => ! empty($oldImageUrl),
-                    ]);
 
                     // Delete old image from S3 storage if it exists
                     if ($oldImageUrl) {
                         try {
                             $this->deleteS3Image($oldImageUrl);
-                            Log::info('Old image deleted from S3 storage', [
-                                'news_id' => $news->id,
-                                'old_image_url' => $oldImageUrl,
-                            ]);
                         } catch (\Exception $e) {
-                            Log::warning('Failed to delete old image', [
-                                'news_id' => $news->id,
-                                'old_image_url' => $oldImageUrl,
-                                'error' => $e->getMessage(),
-                            ]);
+                            // Continue even if old image deletion fails
                         }
                     }
 
@@ -381,18 +336,9 @@ class NewsController extends Controller
             }
 
             // Update news record in database
-            $updateTime = microtime(true);
             DB::transaction(function () use ($news, $validated) {
                 $news->update($validated);
             }, 5); // 5 attempts with deadlock detection
-            $updateTime = microtime(true) - $updateTime;
-
-            Log::info('News updated successfully', [
-                'news_id' => $news->id,
-                'title' => $news->title,
-                'update_time_ms' => round($updateTime * 1000, 2),
-                'image_status' => $imageUpdateStatus,
-            ]);
 
             return response()->json([
                 'success' => true,
@@ -400,7 +346,6 @@ class NewsController extends Controller
                 'data' => $news->fresh()->load('category'), // Get fresh data from database with category
                 'details' => [
                     'image_update' => $imageUpdateStatus,
-                    'update_time_ms' => round($updateTime * 1000, 2),
                 ],
             ]);
 
@@ -437,18 +382,9 @@ class NewsController extends Controller
             $newsId = $news->id;
 
             // Use database transaction for faster, safer deletion
-            $deleteTime = microtime(true);
             DB::transaction(function () use ($news) {
                 $news->delete();
             }, 5); // 5 attempts with deadlock detection
-            $deleteTime = microtime(true) - $deleteTime;
-
-            // Log successful deletion
-            Log::info('News deleted successfully', [
-                'news_id' => $newsId,
-                'delete_time_ms' => round($deleteTime * 1000, 2),
-                'had_image' => ! empty($imageUrl),
-            ]);
 
             // Delete image from S3 storage if it exists
             $fileCleanupStatus = 'no_image';
@@ -456,17 +392,7 @@ class NewsController extends Controller
                 try {
                     $this->deleteS3Image($imageUrl);
                     $fileCleanupStatus = 'completed';
-
-                    Log::info('Image deleted from S3 storage', [
-                        'news_id' => $newsId,
-                        'image_url' => $imageUrl,
-                    ]);
                 } catch (\Exception $imageError) {
-                    Log::warning('Image cleanup failed but news deleted successfully', [
-                        'news_id' => $newsId,
-                        'image_url' => $imageUrl,
-                        'error' => $imageError->getMessage(),
-                    ]);
                     $fileCleanupStatus = 'failed';
                 }
             }
@@ -474,7 +400,6 @@ class NewsController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'News deleted successfully',
-                'timing' => round($deleteTime * 1000, 2).'ms',
                 'details' => [
                     'news_deleted' => true,
                     'file_cleanup' => $fileCleanupStatus,
@@ -530,20 +455,7 @@ class NewsController extends Controller
 
                 // Check if file exists and delete it
                 if (Storage::disk('s3')->exists($relativePath)) {
-                    $deleted = Storage::disk('s3')->delete($relativePath);
-
-                    Log::info('S3 image deletion', [
-                        'original_url' => $imageUrl,
-                        'relative_path' => $relativePath,
-                        'deleted' => $deleted,
-                    ]);
-
-                    return $deleted;
-                } else {
-                    Log::warning('S3 image file not found for deletion', [
-                        'url' => $imageUrl,
-                        'path' => $relativePath,
-                    ]);
+                    return Storage::disk('s3')->delete($relativePath);
                 }
             }
         } catch (\Exception $e) {

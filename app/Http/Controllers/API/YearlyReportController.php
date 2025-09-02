@@ -316,22 +316,11 @@ class YearlyReportController extends Controller
             
             // Store info before deletion
             $fileUrl = $report->file_url;
-            $reportYear = $report->year ?? 'Unknown';
             
             // Use database transaction for safer deletion
-            $deleteTime = microtime(true);
             DB::transaction(function () use ($report) {
                 $report->delete();
             }, 5); // 5 attempts with deadlock detection
-            $deleteTime = microtime(true) - $deleteTime;
-            
-            // Log successful deletion
-            Log::info("Yearly report deleted successfully", [
-                'report_id' => $id,
-                'report_year' => $reportYear,
-                'delete_time_ms' => round($deleteTime * 1000, 2),
-                'had_file' => !empty($fileUrl)
-            ]);
             
             $s3DeleteStatus = 'skipped';
             $attemptS3Cleanup = env('ATTEMPT_S3_CLEANUP_ON_DELETE', false);
@@ -342,18 +331,8 @@ class YearlyReportController extends Controller
                     $this->deleteReportFromS3WithTimeout($fileUrl, 3); // 3 second timeout
                     $s3DeleteStatus = 'completed';
                 } catch (\Exception $s3Error) {
-                    Log::warning("S3 cleanup failed but yearly report deleted successfully", [
-                        'report_id' => $id,
-                        'file_url' => $fileUrl,
-                        'error' => $s3Error->getMessage()
-                    ]);
                     $s3DeleteStatus = 'failed';
                 }
-            } else if ($fileUrl) {
-                Log::info("S3 file marked for manual cleanup", [
-                    'report_id' => $id,
-                    'file_url' => $fileUrl
-                ]);
             }
             
             $message = 'Yearly report deleted successfully';
@@ -364,7 +343,6 @@ class YearlyReportController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'timing' => round($deleteTime * 1000, 2) . 'ms',
                 'details' => [
                     'report_deleted' => true,
                     'file_cleanup' => $s3DeleteStatus

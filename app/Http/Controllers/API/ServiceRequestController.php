@@ -340,12 +340,7 @@ class ServiceRequestController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            // Log error but don't stop the deletion process
-            \Log::warning('Failed to delete some service request documents from private S3', [
-                'error' => $e->getMessage(),
-                'id_card_paths' => $idCardPaths,
-                'family_book_paths' => $familyBookPaths,
-            ]);
+            // Continue silently - document cleanup failure shouldn't stop the main deletion process
         }
     }
 
