@@ -15,9 +15,6 @@ use App\Http\Controllers\NewsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/test', function () {
-    return response()->json(['message' => 'API test route works!']);
-});
 
 // Public authentication routes (no CSRF for API)
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1'); // 5 login attempts per minute
@@ -68,26 +65,7 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         ]);
     });
 
-    // STAFF REPORT ROUTES (Including Draft Reports)
-    Route::prefix('reports/staff')->group(function () {
-        // All Reports (including drafts) - for authenticated staff
-        Route::get('/monthly/all', [MonthlyReportController::class, 'indexAll']); // Including drafts
-        Route::get('/yearly/all', [YearlyReportController::class, 'indexAll']); // Including drafts
-        Route::get('/monthly/{id}', [MonthlyReportController::class, 'showById']); // Including drafts
-        Route::get('/yearly/{id}', [YearlyReportController::class, 'adminShow']); // Including drafts
-
-        // Publishing controls (staff can publish/unpublish)
-        Route::post('/monthly/{id}/publish', [MonthlyReportController::class, 'publish']);
-        Route::post('/monthly/{id}/unpublish', [MonthlyReportController::class, 'unpublish']);
-        Route::post('/yearly/{id}/publish', [YearlyReportController::class, 'publish']);
-        Route::post('/yearly/{id}/unpublish', [YearlyReportController::class, 'unpublish']);
-
-        // Detailed Analytics (for staff)
-        Route::get('/analytics/dashboard', [ReportAnalyticsController::class, 'dashboard']);
-        Route::get('/analytics/missing', [ReportAnalyticsController::class, 'missingReports']);
-        Route::get('/analytics/completion', [ReportAnalyticsController::class, 'completionRates']);
-        Route::get('/analytics/status', [ReportAnalyticsController::class, 'reportsByStatus']);
-    });
+    
 
     // ADMIN ONLY ROUTES (Admin Role Required)
     Route::middleware(['admin'])->group(function () {
@@ -102,14 +80,15 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
 
         // Service request management (admin only)
+        Route::get('/service-requests', [ServiceRequestController::class, 'index']); // Admin-only access with filtering
         Route::patch('/service-requests/{id}/status', [ServiceRequestController::class, 'updateStatus']);
         Route::delete('/admin/service-requests/{id}', [ServiceRequestController::class, 'destroy']);
         Route::get('/admin/service-requests', [ServiceRequestController::class, 'adminIndex']);
         Route::get('/admin/service-requests/by-status', [ServiceRequestController::class, 'adminGetByStatus']);
         Route::get('/admin/service-requests/{id}', [ServiceRequestController::class, 'adminShow']);
         Route::get('/admin/service-requests/{id}/documents/{type}/{filename}', [ServiceRequestController::class, 'serveDocument']);
-        Route::get('/test-s3-document-upload', [ServiceRequestController::class, 'testS3DocumentUpload']);
-
+        Route::get('/statuses', fn () => \App\Models\Status::all());
+        
         // Dashboard routes (admin only)
         Route::prefix('admin/dashboard')->group(function () {
             Route::get('/stats', [DashboardController::class, 'stats']);
@@ -133,6 +112,27 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
 
         // Admin utility routes
         Route::delete('/admin/cleanup-tokens', [AuthController::class, 'cleanupExpiredTokens']);
+    
+        // STAFF REPORT ROUTES (Including Draft Reports)
+        Route::prefix('reports/staff')->group(function () {
+            // All Reports (including drafts) - for authenticated staff
+            Route::get('/monthly/all', [MonthlyReportController::class, 'indexAll']); // Including drafts
+            Route::get('/yearly/all', [YearlyReportController::class, 'indexAll']); // Including drafts
+            Route::get('/monthly/{id}', [MonthlyReportController::class, 'showById']); // Including drafts
+            Route::get('/yearly/{id}', [YearlyReportController::class, 'adminShow']); // Including drafts
+
+            // Publishing controls (staff can publish/unpublish)
+            Route::post('/monthly/{id}/publish', [MonthlyReportController::class, 'publish']);
+            Route::post('/monthly/{id}/unpublish', [MonthlyReportController::class, 'unpublish']);
+            Route::post('/yearly/{id}/publish', [YearlyReportController::class, 'publish']);
+            Route::post('/yearly/{id}/unpublish', [YearlyReportController::class, 'unpublish']);
+
+            // Detailed Analytics (for staff)
+            Route::get('/analytics/dashboard', [ReportAnalyticsController::class, 'dashboard']);
+            Route::get('/analytics/missing', [ReportAnalyticsController::class, 'missingReports']);
+            Route::get('/analytics/completion', [ReportAnalyticsController::class, 'completionRates']);
+            Route::get('/analytics/status', [ReportAnalyticsController::class, 'reportsByStatus']);
+    });
     });
 });
 
@@ -145,10 +145,7 @@ Route::get('/news', [NewsController::class, 'index']);
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
 
-Route::get('/statuses', fn () => \App\Models\Status::all());
-
 // Public service request routes
-// Route::get('/service-requests', [ServiceRequestController::class, 'index']);
 Route::post('/service-requests', [ServiceRequestController::class, 'store'])->middleware('throttle:3,1'); // 3 requests per minute
 
 // Public service categories routes
@@ -156,4 +153,5 @@ Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
 Route::get('/service-categories/{type}', [ServiceCategoryController::class, 'show']);
 
 // Public search routes
-Route::get('/search', [SearchController::class, 'globalSearch']);
+Route::get('/search', [SearchController::class, 'globalSearch'])->middleware('throttle:30,1'); // 30 searches per minute
+Route::get('/search/suggestions', [SearchController::class, 'searchSuggestions'])->middleware('throttle:60,1'); // 60 suggestions per minute (higher limit for autocomplete)

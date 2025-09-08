@@ -66,9 +66,16 @@ class SearchController extends Controller
 
 
         } catch (\Exception $e) {
+            // Log the actual error for debugging
+            \Log::error('Search error: ' . $e->getMessage(), [
+                'query' => $request->get('q', ''),
+                'user_agent' => $request->userAgent(),
+                'ip' => $request->ip()
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Error performing search: ' . $e->getMessage()
+                'message' => 'Search service temporarily unavailable. Please try again later.'
             ], 500);
         }
     }
@@ -222,112 +229,6 @@ class SearchController extends Controller
         return $results;
     }
 
-    // ALTERNATIVE: Ultra-fast raw SQL with JOINs for relationships
-    private function performOptimizedRawSearch(string $query, int $limit): array
-    {
-        $escapedQuery = '%' . addslashes($query) . '%';
-        
-        // News search (no relationships needed)
-        $newsResults = \DB::table('news')
-            ->select(['id', 'title', 'content', 'slug', 'created_at', 'updated_at'])
-            ->where(function($q) use ($escapedQuery) {
-                $q->where('title', 'LIKE', $escapedQuery)
-                ->orWhere('content', 'LIKE', $escapedQuery);
-            })
-            ->orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->get()
-            ->map(function($item) {
-                return [
-                    'id' => $item->id,
-                    'title' => $item->title,
-                    'content' => $item->content ?? '',
-                    'slug' => $item->slug,
-                    'type' => 'news',
-                    'created_at' => $item->created_at,
-                    'updated_at' => $item->updated_at,
-                ];
-            })->toArray();
-
-        // Monthly reports with JOINs to get month and year data
-        $monthlyResults = \DB::table('monthly_reports as mr')
-            ->leftJoin('months as m', 'mr.month_id', '=', 'm.id')
-            ->leftJoin('years as y', 'mr.year_id', '=', 'y.id')
-            ->select([
-                'mr.id', 'mr.title', 'mr.description', 'mr.created_at', 'mr.updated_at',
-                'm.id as month_id', 'm.month as month_name', 'm.created_at as month_created_at', 'm.updated_at as month_updated_at',
-                'y.id as year_id', 'y.year_value', 'y.created_at as year_created_at', 'y.updated_at as year_updated_at'
-            ])
-            ->where('mr.status', 'published')  // Only include published reports
-            ->where(function($q) use ($escapedQuery) {
-                $q->where('mr.title', 'LIKE', $escapedQuery)
-                ->orWhere('mr.description', 'LIKE', $escapedQuery);
-            })
-            ->orderBy('mr.created_at', 'desc')
-            ->limit($limit)
-            ->get()
-            ->map(function($item) {
-                return [
-                    'id' => $item->id,
-                    'title' => $item->title,
-                    'description' => $item->description ?? '',
-                    'month' => $item->month_id ? [
-                        'id' => $item->month_id,
-                        'month' => $item->month_name,
-                        'created_at' => $item->month_created_at,
-                        'updated_at' => $item->month_updated_at,
-                    ] : null,
-                    'year' => $item->year_id ? [
-                        'id' => $item->year_id,
-                        'year_value' => $item->year_value,
-                        'created_at' => $item->year_created_at,
-                        'updated_at' => $item->year_updated_at,
-                    ] : null,
-                    'type' => 'monthly_report',
-                    'created_at' => $item->created_at,
-                    'updated_at' => $item->updated_at,
-                ];
-            })->toArray();
-
-        // Yearly reports with JOIN to get year data
-        $yearlyResults = \DB::table('yearly_reports as yr')
-            ->leftJoin('years as y', 'yr.year_id', '=', 'y.id')
-            ->select([
-                'yr.id', 'yr.title', 'yr.description', 'yr.created_at', 'yr.updated_at',
-                'y.id as year_id', 'y.year_value', 'y.created_at as year_created_at', 'y.updated_at as year_updated_at'
-            ])
-            ->where('yr.status', 'published')  // Only include published reports
-            ->where(function($q) use ($escapedQuery) {
-                $q->where('yr.title', 'LIKE', $escapedQuery)
-                ->orWhere('yr.description', 'LIKE', $escapedQuery);
-            })
-            ->orderBy('yr.created_at', 'desc')
-            ->limit($limit)
-            ->get()
-            ->map(function($item) {
-                return [
-                    'id' => $item->id,
-                    'title' => $item->title,
-                    'description' => $item->description ?? '',
-                    'year' => $item->year_id ? [
-                        'id' => $item->year_id,
-                        'year_value' => $item->year_value,
-                        'created_at' => $item->year_created_at,
-                        'updated_at' => $item->year_updated_at,
-                    ] : null,
-                    'type' => 'yearly_report',
-                    'created_at' => $item->created_at,
-                    'updated_at' => $item->updated_at,
-                ];
-            })->toArray();
-
-        return [
-            'news' => $newsResults,
-            'monthly_reports' => $monthlyResults,
-            'yearly_reports' => $yearlyResults
-        ];
-    }
-
     /**
      * Search suggestions for autocomplete
      */
@@ -413,9 +314,16 @@ class SearchController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            // Log the actual error for debugging
+            \Log::error('Search suggestions error: ' . $e->getMessage(), [
+                'query' => $request->get('q', ''),
+                'user_agent' => $request->userAgent(),
+                'ip' => $request->ip()
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Error getting suggestions: ' . $e->getMessage()
+                'message' => 'Search suggestions temporarily unavailable. Please try again later.'
             ], 500);
         }
     }

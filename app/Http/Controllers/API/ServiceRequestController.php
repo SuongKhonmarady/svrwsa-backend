@@ -12,27 +12,42 @@ use Illuminate\Support\Facades\Storage;
 class ServiceRequestController extends Controller
 {
     /**
-     * Display a listing of all service requests.
+     * Admin only: Display a listing of all service requests with filtering.
+     * Supports filtering by name and phone parameters.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $serviceRequests = ServiceRequest::with([
+        $query = ServiceRequest::with([
             'status',
             'commune', 
             'district',
             'province',
             'occupation',
             'usageType'
-        ])->get();
+        ]);
 
-        // Hide sensitive documents from non-admin users
-        $serviceRequests->transform(function ($request) {
-            $request->makeHidden(['id_card', 'family_book']);
+        // Filter by name if provided
+        if ($request->has('name') && !empty($request->name)) {
+            $query->where('name', 'LIKE', '%' . $request->name . '%');
+        }
 
-            return $request;
-        });
+        // Filter by phone if provided
+        if ($request->has('phone') && !empty($request->phone)) {
+            $query->where('phone', 'LIKE', '%' . $request->phone . '%');
+        }
 
-        return response()->json(['success' => true, 'data' => $serviceRequests]);
+        $serviceRequests = $query->get();
+
+        // Admin can see all data including sensitive documents
+        return response()->json([
+            'success' => true, 
+            'data' => $serviceRequests,
+            'filters' => [
+                'name' => $request->name,
+                'phone' => $request->phone
+            ],
+            'count' => $serviceRequests->count()
+        ]);
     }
 
     public function store(ServiceRequestFormRequest $request)
@@ -341,53 +356,6 @@ class ServiceRequestController extends Controller
             }
         } catch (\Exception $e) {
             // Continue silently - document cleanup failure shouldn't stop the main deletion process
-        }
-    }
-
-    /**
-     * Test S3 private connection for service request documents.
-     */
-    public function testS3DocumentUpload()
-    {
-        try {
-            // Create a test document content
-            $testContent = 'This is a test document for private S3 upload';
-            $filename = 'test_document_'.time().'.txt';
-
-            // Upload test file to S3 private disk
-            $path = Storage::disk('s3-private')->put('service_requests/test/'.$filename, $testContent);
-
-            // Check if file exists
-            $exists = Storage::disk('s3-private')->exists('service_requests/test/'.$filename);
-
-            // Try to generate public URL (should fail or be private)
-            $canGeneratePublicUrl = false;
-            try {
-                $publicUrl = Storage::disk('s3-private')->url('service_requests/test/'.$filename);
-                $canGeneratePublicUrl = true;
-            } catch (\Exception $e) {
-                $publicUrl = 'Cannot generate public URL (Good for security!)';
-            }
-
-            // Delete the test file
-            Storage::disk('s3-private')->delete('service_requests/test/'.$filename);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'S3 private document upload test successful',
-                'test_path' => $path,
-                'file_existed' => $exists,
-                'public_url_accessible' => $canGeneratePublicUrl,
-                'public_url' => $publicUrl,
-                'bucket' => env('AWS_BUCKET'),
-                'security_note' => $canGeneratePublicUrl ? 'WARNING: Files may be publicly accessible!' : 'SECURE: Files are properly private',
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'S3 private document upload test failed',
-                'message' => $e->getMessage(),
-            ], 500);
         }
     }
 }
