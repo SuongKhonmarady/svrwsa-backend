@@ -110,9 +110,15 @@ class ServiceRequestController extends Controller
                 'message' => 'Request submitted successfully with documents!',
             ]);
         } catch (\Exception $e) {
+            \Log::error('Service request submission failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit request: '.$e->getMessage(),
+                'message' => 'Failed to submit request. Please try again later.',
             ], 500);
         }
     }
