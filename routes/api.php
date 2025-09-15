@@ -15,7 +15,6 @@ use App\Http\Controllers\NewsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-
 // Public authentication routes (no CSRF for API)
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1'); // 5 login attempts per minute
 
@@ -65,8 +64,6 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         ]);
     });
 
-    
-
     // ADMIN ONLY ROUTES (Admin Role Required)
     Route::middleware(['admin'])->group(function () {
         // News management
@@ -88,7 +85,7 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
         Route::get('/admin/service-requests/{id}', [ServiceRequestController::class, 'adminShow']);
         Route::get('/admin/service-requests/{id}/documents/{type}/{filename}', [ServiceRequestController::class, 'serveDocument']);
         Route::get('/statuses', fn () => \App\Models\Status::all());
-        
+
         // Dashboard routes (admin only)
         Route::prefix('admin/dashboard')->group(function () {
             Route::get('/stats', [DashboardController::class, 'stats']);
@@ -112,7 +109,7 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
 
         // Admin utility routes
         Route::delete('/admin/cleanup-tokens', [AuthController::class, 'cleanupExpiredTokens']);
-    
+
         // STAFF REPORT ROUTES (Including Draft Reports)
         Route::prefix('reports/staff')->group(function () {
             // All Reports (including drafts) - for authenticated staff
@@ -132,11 +129,12 @@ Route::middleware(['auth:sanctum', 'token.expiry'])->group(function () {
             Route::get('/analytics/missing', [ReportAnalyticsController::class, 'missingReports']);
             Route::get('/analytics/completion', [ReportAnalyticsController::class, 'completionRates']);
             Route::get('/analytics/status', [ReportAnalyticsController::class, 'reportsByStatus']);
-    });
+        });
     });
 });
 
 // Public news routes
+Route::get('/news/featured', [NewsController::class, 'featured']);
 Route::get('/news/categories', [NewsController::class, 'categories']);
 Route::get('/news/{news}', [NewsController::class, 'show']);
 Route::get('/news', [NewsController::class, 'index']);

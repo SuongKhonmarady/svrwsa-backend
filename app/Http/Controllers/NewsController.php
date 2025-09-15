@@ -19,17 +19,21 @@ class NewsController extends Controller
             $query = News::with('category');
 
             // Filter by category name if provided
-            if ($request->has('category') && !empty($request->category)) {
+            if ($request->has('category') && ! empty($request->category)) {
                 $categoryName = trim($request->category);
                 $query->whereHas('category', function ($q) use ($categoryName) {
-                    $q->where('name', 'LIKE', '%' . $categoryName . '%');
+                    $q->where('name', 'LIKE', '%'.$categoryName.'%');
                 });
             }
 
-            $news = $query->orderBy('created_at', 'desc')->get();
+            // Pagination: limit to 10 items per page
+            $perPage = $request->get('per_page', 10); // Default 10, allow customization
+            $perPage = min($perPage, 50); // Maximum 50 items per page for performance
+
+            $news = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             // Transform the data to make category information more prominent
-            $transformedNews = $news->map(function ($item) {
+            $transformedNews = $news->getCollection()->map(function ($item) {
                 return [
                     'id' => $item->id,
                     'title' => $item->title,
@@ -43,33 +47,116 @@ class NewsController extends Controller
                     'category' => $item->category ? [
                         'id' => $item->category->id,
                         'name' => $item->category->name,
-                        'slug' => $item->category->name // Using name as slug for consistency
+                        'slug' => $item->category->name, // Using name as slug for consistency
                     ] : null,
-                    'category_id' => $item->category_id
+                    'category_id' => $item->category_id,
                 ];
             });
 
             return response()->json([
                 'success' => true,
                 'data' => $transformedNews,
+                'pagination' => [
+                    'current_page' => $news->currentPage(),
+                    'last_page' => $news->lastPage(),
+                    'per_page' => $news->perPage(),
+                    'total' => $news->total(),
+                    'from' => $news->firstItem(),
+                    'to' => $news->lastItem(),
+                    'has_more_pages' => $news->hasMorePages(),
+                    'next_page_url' => $news->nextPageUrl(),
+                    'prev_page_url' => $news->previousPageUrl(),
+                ],
                 'filters' => [
                     'category' => $request->get('category'),
-                    'total_count' => $news->count(),
-                    'applied_filters' => $request->only(['category'])
+                    'applied_filters' => $request->only(['category', 'per_page']),
                 ],
                 'category_info' => $request->has('category') ? [
                     'filtered_by' => $request->get('category'),
-                    'category_details' => $news->first()?->category
+                    'category_details' => $news->first()?->category,
                 ] : null,
-                'message' => $request->has('category') 
-                    ? "News filtered by category: {$request->category}" 
-                    : 'All news retrieved successfully'
+                'message' => $request->has('category')
+                    ? "News filtered by category: {$request->category}"
+                    : 'News retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error retrieving news', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error retrieving news: ' . $e->getMessage()
+                'message' => 'Unable to retrieve news at this time. Please try again later.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get featured news
+     */
+    public function featured(Request $request)
+    {
+        try {
+            $perPage = $request->get('per_page', 10);
+            $perPage = min($perPage, 50); // Maximum 50 items per page for performance
+
+            $featuredNews = News::with('category')
+                ->where('featured', true)
+                ->where('published_at', '<=', now()) // Only published news
+                ->orderBy('published_at', 'desc')
+                ->paginate($perPage);
+
+            // Transform the data
+            $transformedNews = $featuredNews->getCollection()->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'slug' => $item->slug,
+                    'content' => $item->content,
+                    'image' => $item->image,
+                    'published_at' => $item->published_at,
+                    'featured' => $item->featured,
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                    'category' => $item->category ? [
+                        'id' => $item->category->id,
+                        'name' => $item->category->name,
+                        'slug' => $item->category->name,
+                    ] : null,
+                    'category_id' => $item->category_id,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $transformedNews,
+                'pagination' => [
+                    'current_page' => $featuredNews->currentPage(),
+                    'last_page' => $featuredNews->lastPage(),
+                    'per_page' => $featuredNews->perPage(),
+                    'total' => $featuredNews->total(),
+                    'from' => $featuredNews->firstItem(),
+                    'to' => $featuredNews->lastItem(),
+                    'has_more_pages' => $featuredNews->hasMorePages(),
+                    'next_page_url' => $featuredNews->nextPageUrl(),
+                    'prev_page_url' => $featuredNews->previousPageUrl(),
+                ],
+                'message' => 'Featured news retrieved successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error retrieving featured news', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to retrieve featured news at this time. Please try again later.',
             ], 500);
         }
     }
@@ -92,18 +179,23 @@ class NewsController extends Controller
                         'id' => $category->id,
                         'name' => $category->name,
                         'news_count' => $category->news_count,
-                        'slug' => $category->name // Using name as slug for consistency
+                        'slug' => $category->name, // Using name as slug for consistency
                     ];
                 }),
                 'total_categories' => $categories->count(),
                 'total_news' => $categories->sum('news_count'),
-                'message' => 'Available categories retrieved successfully'
+                'message' => 'Available categories retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error retrieving categories', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error retrieving categories: ' . $e->getMessage()
+                'message' => 'Unable to retrieve categories at this time. Please try again later.',
             ], 500);
         }
     }
@@ -154,7 +246,7 @@ class NewsController extends Controller
                     return response()->json([
                         'success' => false,
                         'error' => 'Failed to upload image',
-                        'message' => 'Image upload failed: '.$e->getMessage(),
+                        'message' => 'Unable to upload image at this time. Please try again later.',
                     ], 500);
                 }
             }
@@ -189,7 +281,7 @@ class NewsController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to create news',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to create news at this time. Please try again later.',
             ], 500);
         }
     }
@@ -273,7 +365,7 @@ class NewsController extends Controller
                     return response()->json([
                         'success' => false,
                         'error' => 'Failed to upload image',
-                        'message' => 'Image upload failed: '.$e->getMessage(),
+                        'message' => 'Unable to upload image at this time. Please try again later.',
                     ], 500);
                 }
             }
@@ -309,7 +401,7 @@ class NewsController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to update news',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to update news at this time. Please try again later.',
             ], 500);
         }
     }
